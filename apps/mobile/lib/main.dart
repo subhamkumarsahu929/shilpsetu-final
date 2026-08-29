@@ -1,13 +1,23 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shilpsetu/core/firebase/firebase_options.dart';
 import 'package:shilpsetu/core/localization/language_provider.dart';
 import 'package:shilpsetu/core/router/app_router.dart';
 import 'package:shilpsetu/core/theme/app_theme.dart';
 import 'package:shilpsetu/core/theme/tokens.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try {
+    final app = await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    debugPrint('🔥 Firebase initialized successfully for project: ${app.options.projectId}');
+  } catch (e) {
+    debugPrint('⚠️ Firebase initialization status: $e');
+  }
   runApp(const ProviderScope(child: ShilpsetuApp()));
 }
 

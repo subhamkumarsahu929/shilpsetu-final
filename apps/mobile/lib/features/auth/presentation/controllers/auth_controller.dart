@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shilpsetu/features/auth/data/firebase_auth_service.dart';
 import 'package:shilpsetu/features/auth/domain/models/artisan_user.dart';
 
 /// State of the artisan authentication and registration session.
@@ -34,7 +35,11 @@ class AuthState {
 }
 
 class AuthController extends StateNotifier<AuthState> {
-  AuthController() : super(AuthState.initial());
+  AuthController({FirebaseAuthService? firebaseAuthService})
+      : _firebaseAuthService = firebaseAuthService ?? FirebaseAuthService(),
+        super(AuthState.initial());
+
+  final FirebaseAuthService _firebaseAuthService;
 
   /// Validates Indian 10-digit mobile number.
   bool isValidPhoneNumber(String phone) {
@@ -47,7 +52,7 @@ class AuthController extends StateNotifier<AuthState> {
     return name.trim().length >= 2;
   }
 
-  /// Registers a new artisan with Name and Phone number.
+  /// Registers a new artisan with Name and Phone number and saves to Firebase Cloud Firestore.
   Future<bool> register({
     required String name,
     required String phoneNumber,
@@ -73,27 +78,32 @@ class AuthController extends StateNotifier<AuthState> {
 
     state = state.copyWith(isLoading: true, clearError: true);
 
-    await Future<void>.delayed(const Duration(milliseconds: 400));
+    try {
+      final user = await _firebaseAuthService.register(
+        name: trimmedName,
+        phoneNumber: cleanPhone,
+        craftType: craftType,
+        location: location,
+      );
 
-    final user = ArtisanUser(
-      id: 'artisan_${DateTime.now().millisecondsSinceEpoch}',
-      name: trimmedName,
-      phoneNumber: cleanPhone,
-      craftType: craftType ?? 'हस्तशिल्प',
-      location: location ?? 'भारत',
-    );
+      state = state.copyWith(
+        isLoading: false,
+        currentUser: user,
+        isAuthenticated: true,
+        clearError: true,
+      );
 
-    state = state.copyWith(
-      isLoading: false,
-      currentUser: user,
-      isAuthenticated: true,
-      clearError: true,
-    );
-
-    return true;
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Registration failed: $e',
+      );
+      return false;
+    }
   }
 
-  /// Logs in an existing artisan with phone number.
+  /// Logs in an existing artisan with phone number and retrieves details from Firebase Cloud Firestore.
   Future<bool> login({
     required String phoneNumber,
     String? existingName,
@@ -109,28 +119,30 @@ class AuthController extends StateNotifier<AuthState> {
 
     state = state.copyWith(isLoading: true, clearError: true);
 
-    await Future<void>.delayed(const Duration(milliseconds: 350));
+    try {
+      final user = await _firebaseAuthService.login(
+        phoneNumber: cleanPhone,
+        existingName: existingName,
+      );
 
-    final user = ArtisanUser(
-      id: 'artisan_existing',
-      name: (existingName?.isNotEmpty ?? false)
-          ? existingName!
-          : 'कारीगर',
-      phoneNumber: cleanPhone,
-      craftType: 'हथकरघा एवं शिल्प',
-    );
+      state = state.copyWith(
+        isLoading: false,
+        currentUser: user,
+        isAuthenticated: true,
+        clearError: true,
+      );
 
-    state = state.copyWith(
-      isLoading: false,
-      currentUser: user,
-      isAuthenticated: true,
-      clearError: true,
-    );
-
-    return true;
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Login failed: $e',
+      );
+      return false;
+    }
   }
 
-  /// Updates artisan profile name and phone number.
+  /// Updates artisan profile name and phone number in Firebase Cloud Firestore.
   Future<bool> updateProfile({
     required String name,
     required String phoneNumber,
@@ -157,24 +169,36 @@ class AuthController extends StateNotifier<AuthState> {
 
     final currentUser = state.currentUser;
     final updatedUser = ArtisanUser(
-      id: currentUser?.id ?? 'artisan_user',
+      id: currentUser?.id ?? 'artisan_$cleanPhone',
       name: trimmedName,
       phoneNumber: cleanPhone,
       craftType: craftType ?? currentUser?.craftType ?? 'हस्तशिल्प',
       location: currentUser?.location ?? 'भारत',
     );
 
-    state = state.copyWith(
-      isLoading: false,
-      currentUser: updatedUser,
-      isAuthenticated: true,
-      clearError: true,
-    );
+    try {
+      await _firebaseAuthService.updateProfile(updatedUser);
 
-    return true;
+      state = state.copyWith(
+        isLoading: false,
+        currentUser: updatedUser,
+        isAuthenticated: true,
+        clearError: true,
+      );
+
+      return true;
+    } catch (e) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: 'Update failed: $e',
+      );
+      return false;
+    }
   }
 
-  void logout() {
+  /// Logs out the artisan from Firebase and clears session.
+  Future<void> logout() async {
+    await _firebaseAuthService.logout();
     state = AuthState.initial();
   }
 
@@ -185,5 +209,6 @@ class AuthController extends StateNotifier<AuthState> {
 
 final authControllerProvider =
     StateNotifierProvider<AuthController, AuthState>((ref) {
-  return AuthController();
+  final firebaseService = ref.watch(firebaseAuthServiceProvider);
+  return AuthController(firebaseAuthService: firebaseService);
 });

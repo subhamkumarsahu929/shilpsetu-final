@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "817957930101",
+    "project_id": "shilpsetu-app",
+    "storage_bucket": "shilpsetu-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:817957930101:android:241acd0c013ffc3392a43c",
+        "android_client_info": {
+          "package_name": "in.shilpsetu.shilpsetu"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDDQ36oeH_mvdsWDm6sCIeI47u0f-9MR7A"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
