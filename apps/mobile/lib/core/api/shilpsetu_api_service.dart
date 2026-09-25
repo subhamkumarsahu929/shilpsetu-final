@@ -28,9 +28,9 @@ class ShilpSetuApiService {
                   'ngrok-skip-browser-warning': 'true',
                   'Accept': 'application/json',
                 },
-                connectTimeout: const Duration(seconds: 30),
-                receiveTimeout: const Duration(seconds: 60),
-                sendTimeout: const Duration(seconds: 60),
+                connectTimeout: const Duration(seconds: 5),
+                receiveTimeout: const Duration(seconds: 15),
+                sendTimeout: const Duration(seconds: 15),
               ),
             );
 

@@ -3,7 +3,7 @@ import 'package:shilpsetu/core/localization/language_provider.dart';
 import 'package:shilpsetu/core/theme/tokens.dart';
 
 /// The exact Shilpsetu brand logo as shown in reference:
-/// - Rounded dark blue badge with connecting node icon
+/// - Rounded emblem loaded via asset method (assets/icons/app_logo.png)
 /// - "shilp" in dark ink text + "setu" in vibrant terracotta orange (in native script)
 class ShilpsetuBrandLogo extends StatelessWidget {
   const ShilpsetuBrandLogo({
@@ -27,26 +27,28 @@ class ShilpsetuBrandLogo extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Brand icon: rounded dark blue container with connecting bridge nodes
-        Container(
-          width: iconSize,
-          height: iconSize,
-          decoration: BoxDecoration(
-            color: Palette.logoBadgeBg,
-            borderRadius: BorderRadius.circular(iconSize * 0.28),
-            boxShadow: [
-              BoxShadow(
-                color: Palette.logoBadgeBg.withValues(alpha: 0.3),
-                blurRadius: 8,
-                offset: const Offset(0, 2),
+        // Brand icon: loaded via asset method
+        ClipRRect(
+          borderRadius: BorderRadius.circular(iconSize * 0.22),
+          child: Image.asset(
+            'assets/icons/app_logo.png',
+            width: iconSize,
+            height: iconSize,
+            fit: BoxFit.contain,
+            errorBuilder: (context, error, stackTrace) => Container(
+              width: iconSize,
+              height: iconSize,
+              decoration: BoxDecoration(
+                color: Palette.logoBadgeBg,
+                borderRadius: BorderRadius.circular(iconSize * 0.28),
               ),
-            ],
-          ),
-          child: Center(
-            child: Icon(
-              Icons.hub_rounded,
-              color: Colors.white,
-              size: iconSize * 0.58,
+              child: Center(
+                child: Icon(
+                  Icons.hub_rounded,
+                  color: Colors.white,
+                  size: iconSize * 0.58,
+                ),
+              ),
             ),
           ),
         ),
@@ -78,6 +80,44 @@ class ShilpsetuBrandLogo extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Standalone Shilpsetu App Logo Widget loaded via Flutter asset method
+class ShilpsetuAppLogo extends StatelessWidget {
+  const ShilpsetuAppLogo({
+    super.key,
+    this.size = 48,
+    this.borderRadius,
+  });
+
+  final double size;
+  final double? borderRadius;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(borderRadius ?? size * 0.22),
+      child: Image.asset(
+        'assets/icons/app_logo.png',
+        width: size,
+        height: size,
+        fit: BoxFit.contain,
+        errorBuilder: (context, error, stackTrace) => Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            color: Palette.logoBadgeBg,
+            borderRadius: BorderRadius.circular(borderRadius ?? size * 0.22),
+          ),
+          child: Icon(
+            Icons.hub_rounded,
+            color: Colors.white,
+            size: size * 0.58,
+          ),
+        ),
+      ),
     );
   }
 }

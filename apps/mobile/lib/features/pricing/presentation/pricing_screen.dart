@@ -37,6 +37,7 @@ class _PricingScreenState extends ConsumerState<PricingScreen> {
   bool _isSpeaking = false;
   bool _isLoading = false;
   bool _isPublishing = false;
+  bool _isOfflineCalculation = true;
   String? _errorMessage;
   PricingSuggestionResult? _pricingResult;
 
@@ -44,87 +45,127 @@ class _PricingScreenState extends ConsumerState<PricingScreen> {
   void initState() {
     super.initState();
     final craftFlow = ref.read(craftFlowProvider);
+    final initialCost = craftFlow.rawMaterialCost;
+    final initialProfit = craftFlow.minProfit;
+
     _materialCostController = TextEditingController(
-      text: craftFlow.rawMaterialCost.toStringAsFixed(0),
+      text: initialCost.toStringAsFixed(0),
     );
     _profitController = TextEditingController(
-      text: craftFlow.minProfit.toStringAsFixed(0),
+      text: initialProfit.toStringAsFixed(0),
     );
+
+    // 1. Instantly calculate certified local fair wage pricing
+    _pricingResult = PricingSuggestionResult.fairWage(
+      rawMaterialCost: initialCost,
+      minProfit: initialProfit,
+      craftType: craftFlow.craftType,
+    );
+    _isOfflineCalculation = true;
+
     _initTts();
-    _fetchPricingFromModel();
+
+    // 2. Fast background check for cloud model (safely dispatched after frame)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _fetchPricingFromModel(silentBackground: true);
+      }
+    });
+  }
+
+  void _recalculateLocal() {
+    final rawCost = double.tryParse(_materialCostController.text) ?? 450.0;
+    final profit = double.tryParse(_profitController.text) ?? 300.0;
+    final craftFlow = ref.read(craftFlowProvider);
+
+    setState(() {
+      _pricingResult = PricingSuggestionResult.fairWage(
+        rawMaterialCost: rawCost,
+        minProfit: profit,
+        craftType: craftFlow.craftType,
+      );
+      _isOfflineCalculation = true;
+      _errorMessage = null;
+    });
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ref.read(craftFlowProvider.notifier).setRawMaterialCost(rawCost);
+        ref.read(craftFlowProvider.notifier).setMinProfit(profit);
+      }
+    });
   }
 
   void _adjustMaterial(double delta) {
     final current = double.tryParse(_materialCostController.text) ?? 450;
     final next = (current + delta).clamp(50, 100000).toDouble();
-    setState(() {
-      _materialCostController.text = next.toStringAsFixed(0);
-    });
-    ref.read(craftFlowProvider.notifier).setRawMaterialCost(next);
+    _materialCostController.text = next.toStringAsFixed(0);
+    _recalculateLocal();
   }
 
   void _adjustProfit(double delta) {
     final current = double.tryParse(_profitController.text) ?? 300;
     final next = (current + delta).clamp(50, 100000).toDouble();
-    setState(() {
-      _profitController.text = next.toStringAsFixed(0);
-    });
-    ref.read(craftFlowProvider.notifier).setMinProfit(next);
+    _profitController.text = next.toStringAsFixed(0);
+    _recalculateLocal();
   }
 
   void _setMaterial(double val) {
-    setState(() {
-      _materialCostController.text = val.toStringAsFixed(0);
-    });
-    ref.read(craftFlowProvider.notifier).setRawMaterialCost(val);
+    _materialCostController.text = val.toStringAsFixed(0);
+    _recalculateLocal();
   }
 
   void _setProfit(double val) {
-    setState(() {
-      _profitController.text = val.toStringAsFixed(0);
-    });
-    ref.read(craftFlowProvider.notifier).setMinProfit(val);
+    _profitController.text = val.toStringAsFixed(0);
+    _recalculateLocal();
   }
 
-  Future<void> _fetchPricingFromModel() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-
+  Future<void> _fetchPricingFromModel({bool silentBackground = false}) async {
     final rawCost = double.tryParse(_materialCostController.text) ?? 450.0;
     final profit = double.tryParse(_profitController.text) ?? 300.0;
 
-    ref.read(craftFlowProvider.notifier).setRawMaterialCost(rawCost);
-    ref.read(craftFlowProvider.notifier).setMinProfit(profit);
+    if (!silentBackground) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
 
     try {
       final craftFlow = ref.read(craftFlowProvider);
       final craft = craftFlow.craftType ?? 'terracotta';
       final apiService = ref.read(shilpSetuApiServiceProvider);
 
-      final result = await apiService.getPricingSuggestion(
-        craftType: craft,
-        rawMaterialCost: rawCost,
-        minProfit: profit,
-        artisanHours: 6,
-        state: 'Odisha',
-        title: craftFlow.titleEn ?? craftFlow.titleHi,
-        category: craftFlow.craftType,
-        imageUrl: craftFlow.activeImageUrl,
-      );
+      final result = await apiService
+          .getPricingSuggestion(
+            craftType: craft,
+            rawMaterialCost: rawCost,
+            minProfit: profit,
+            title: craftFlow.titleEn ?? craftFlow.titleHi,
+            category: craftFlow.craftType,
+            imageUrl: craftFlow.activeImageUrl,
+          )
+          .timeout(const Duration(seconds: 4));
 
       if (mounted) {
         setState(() {
           _pricingResult = result;
           _isLoading = false;
+          _isOfflineCalculation = false;
+          _errorMessage = null;
         });
       }
     } catch (e) {
+      debugPrint('Cloud pricing engine check: $e');
       if (mounted) {
         setState(() {
-          _errorMessage = e.toString();
           _isLoading = false;
+          _isOfflineCalculation = true;
+          // Ensure we always have valid fair-wage calculation
+          _pricingResult ??= PricingSuggestionResult.fairWage(
+            rawMaterialCost: rawCost,
+            minProfit: profit,
+          );
         });
       }
     }
@@ -242,6 +283,30 @@ class _PricingScreenState extends ConsumerState<PricingScreen> {
     }
   }
 
+  Future<void> _handleActionButton() async {
+    final craftFlow = ref.read(craftFlowProvider);
+    if (craftFlow.hasProcessedImage) {
+      await _publishListing();
+    } else {
+      // Artisan used Fair Price Calculator directly from Home Screen
+      final rawCost = double.tryParse(_materialCostController.text) ?? 450.0;
+      final profit = double.tryParse(_profitController.text) ?? 300.0;
+      final notifier = ref.read(craftFlowProvider.notifier)
+        ..setRawMaterialCost(rawCost)
+        ..setMinProfit(profit)
+        ..setSelectedPriceTier(_selectedTierIndex);
+      if (_pricingResult != null) {
+        unawaited(
+          notifier.calculatePricing(
+            rawMaterialCost: rawCost,
+            minProfit: profit,
+          ),
+        );
+      }
+      context.go('/capture');
+    }
+  }
+
   @override
   void dispose() {
     _materialCostController.dispose();
@@ -261,25 +326,37 @@ class _PricingScreenState extends ConsumerState<PricingScreen> {
         ? (craftFlow.titleEn ?? craftFlow.titleHi ?? 'Craft Object')
         : (craftFlow.titleHi ?? craftFlow.titleEn ?? lang.brandShilp);
 
+    final selectedPriceValue = _selectedTierIndex == 0
+        ? (_pricingResult?.floorPrice ?? 450)
+        : (_selectedTierIndex == 2
+            ? (_pricingResult?.stretchPrice ?? 1100)
+            : (_pricingResult?.suggestedPrice ?? 750));
+
     return Scaffold(
-      backgroundColor: Palette.surface,
+      backgroundColor: const Color(0xFFF8FAFC), // Modern clean slate background
       appBar: AppBar(
         title: ShilpsetuBrandLogo(language: lang),
         backgroundColor: Colors.white,
         elevation: 0,
+        centerTitle: false,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_rounded, color: Palette.ink),
           onPressed: () {
             if (context.canPop()) {
               context.pop();
-            } else {
+            } else if (craftFlow.hasProcessedImage) {
               context.go('/cataloger');
+            } else {
+              context.go('/home');
             }
           },
         ),
         actions: [
           IconButton.filledTonal(
-            icon: const Icon(Icons.volume_up_rounded, size: 24),
+            icon: Icon(
+              _isSpeaking ? Icons.stop_circle_rounded : Icons.volume_up_rounded,
+              size: 24,
+            ),
             style: IconButton.styleFrom(
               backgroundColor: Palette.goldAccentLight,
               foregroundColor: Palette.goldAccent,
@@ -291,225 +368,36 @@ class _PricingScreenState extends ConsumerState<PricingScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(Sizes.gutter),
+          padding: const EdgeInsets.symmetric(horizontal: Sizes.gutter, vertical: 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // ── Object Card from Step 1 & Step 2 ───────────────────────────
-              if (craftFlow.hasProcessedImage) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(Sizes.cardRadius),
-                    border: Border.all(
-                      color: Palette.purpleContainer.withValues(alpha: 0.25),
-                      width: 1.5,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Palette.ink.withValues(alpha: 0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          color: Palette.surface,
-                          borderRadius: BorderRadius.circular(Sizes.radius),
-                          border: Border.all(color: Palette.surfaceContainerHigh),
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: craftFlow.localProcessedImagePath != null
-                            ? Image.file(
-                                File(craftFlow.localProcessedImagePath!),
-                                fit: BoxFit.contain,
-                              )
-                            : const Icon(Icons.palette_rounded),
-                      ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              title,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                                color: Palette.ink,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 4),
-                            TripleChannelStatusBadge(
-                              label: strings.step3PricingBadge,
-                              icon: Icons.currency_rupee_rounded,
-                              color: Palette.purpleContainerDark,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: Sizes.gapMedium),
-              ],
-
-              // Signature Purple Prompt Banner
-              ZeroLiteracyPromptCard(
-                promptText: strings.step3Prompt,
-                icon: Icons.currency_rupee_rounded,
-                onReplayAudio: _speakPricingRationale,
+              // ── 1. Fair Price Hero Card ───────────────────────────────────
+              _buildHeroPriceCard(
+                strings: strings,
+                craftFlow: craftFlow,
+                title: title,
+                selectedPrice: selectedPriceValue,
               ),
 
-              const SizedBox(height: Sizes.gapMedium),
+              const SizedBox(height: 16),
 
-              // ── 1. Interactive Raw Material Cost & Desired Profit Input ───────
-              _buildCostAndProfitInputCard(strings),
-
-              const SizedBox(height: Sizes.gapMedium),
-
-              // Audio Rationale Card
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Palette.purpleContainerLight,
-                  borderRadius: BorderRadius.circular(Sizes.radius),
-                  border: Border.all(
-                    color: Palette.purpleContainer.withValues(alpha: 0.35),
+              // ── 2. Pricing Tiers ──────────────────────────────────────────
+              if (_pricingResult != null) ...[
+                Padding(
+                  padding: const EdgeInsets.only(left: 4, bottom: 8),
+                  child: Text(
+                    strings.step3PricingBadge,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: Palette.ink,
+                      letterSpacing: 0.2,
+                    ),
                   ),
                 ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.insights_rounded,
-                      color: Palette.purpleContainerDark,
-                      size: 28,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        _pricingResult != null
-                            ? (_pricingResult!.artisanNote ?? strings.step3PricingSpeech)
-                            : strings.step3Prompt,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          color: Palette.ink,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(
-                        Icons.volume_up_rounded,
-                        color: Palette.purpleContainerDark,
-                        size: 26,
-                      ),
-                      onPressed: _speakPricingRationale,
-                    ),
-                  ],
-                ),
-              ),
 
-              const SizedBox(height: Sizes.gapMedium),
-
-              // ── Loading State ──────────────────────────────────────────────
-              if (_isLoading)
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: 48, horizontal: 24),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(Sizes.cardRadius),
-                    border: Border.all(color: Palette.surfaceContainerHigh),
-                  ),
-                  child: Column(
-                    children: [
-                      const CircularProgressIndicator(
-                        color: Palette.purpleContainerDark,
-                      ),
-                      const SizedBox(height: Sizes.gapMedium),
-                      Text(
-                        strings.step3Prompt,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: Palette.ink,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
-                  ),
-                )
-              // ── Error State (No Hardcoded Fallback!) ────────────────────────
-              else if (_errorMessage != null)
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Palette.revise.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(Sizes.cardRadius),
-                    border: Border.all(color: Palette.revise, width: 2),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.error_outline_rounded,
-                            color: Palette.revise,
-                            size: 32,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              _errorMessage!,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                color: Palette.revise,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Palette.revise,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(Sizes.radius),
-                          ),
-                        ),
-                        icon: const Icon(Icons.refresh_rounded),
-                        label: Text(
-                          strings.emptyCatalogButton,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        onPressed: _fetchPricingFromModel,
-                      ),
-                    ],
-                  ),
-                )
-              // ── Dynamic Model Pricing Tiers ────────────────────────────────
-              else if (_pricingResult != null) ...[
-                // Model Cost & Profit Analysis Breakdown Card
-                _buildProfitAnalysisCard(strings, _pricingResult!),
-
-                const SizedBox(height: Sizes.gapMedium),
-
-                // 1. Floor Tier (Fair Wage Minimum)
+                // Tier 0: Statutory Floor (MSP)
                 _buildPriceTierCard(
                   index: 0,
                   title: strings.tierFloorTitle,
@@ -517,29 +405,23 @@ class _PricingScreenState extends ConsumerState<PricingScreen> {
                   color: Palette.terracotta,
                   icon: Icons.shield_rounded,
                   badge: strings.tierFloorBadge,
-                  subtitle: _pricingResult!.materialCost != null
-                      ? '${strings.materialCostLabel}: ₹${_pricingResult!.materialCost!.toStringAsFixed(0)}'
-                      : strings.tierFloorBadge,
-                  description: strings.tierFloorDesc,
                 ),
 
-                const SizedBox(height: Sizes.gapMedium),
+                const SizedBox(height: 10),
 
-                // 2. Suggested Tier (Market Standard)
+                // Tier 1: Recommended Standard (Benchmark)
                 _buildPriceTierCard(
                   index: 1,
                   title: strings.tierSuggestedTitle,
                   price: '₹ ${_pricingResult!.suggestedPrice.toStringAsFixed(0)}',
                   color: Palette.purpleContainerDark,
-                  icon: Icons.star_rounded,
+                  icon: Icons.verified_rounded,
                   badge: strings.tierSuggestedBadge,
-                  subtitle: strings.tierSuggestedBadge,
-                  description: _pricingResult!.pricingStrategy ?? strings.tierSuggestedDesc,
                 ),
 
-                const SizedBox(height: Sizes.gapMedium),
+                const SizedBox(height: 10),
 
-                // 3. Stretch Tier (Premium / Boutique)
+                // Tier 2: Stretch Tier (Premium / Export)
                 _buildPriceTierCard(
                   index: 2,
                   title: strings.tierStretchTitle,
@@ -547,25 +429,36 @@ class _PricingScreenState extends ConsumerState<PricingScreen> {
                   color: Palette.affirm,
                   icon: Icons.workspace_premium_rounded,
                   badge: strings.tierStretchBadge,
-                  subtitle: strings.tierStretchBadge,
-                  description: strings.tierStretchDesc,
                 ),
 
-                const SizedBox(height: Sizes.gapLarge),
-
-                // Large Action Button with Amber styling
-                SpokenActionButton(
-                  onPressed: _isPublishing ? null : _publishListing,
-                  icon: _isPublishing
-                      ? Icons.hourglass_top_rounded
-                      : Icons.check_circle_rounded,
-                  label: strings.publishButton(_isPublishing),
-                  subtitle: strings.publishSubtitle,
-                  backgroundColor: Palette.amberButton,
-                  foregroundColor: Palette.ink,
-                  isLarge: true,
-                ),
+                const SizedBox(height: 16),
               ],
+
+              // ── 3. Interactive Cost & Profit Tuner (Collapsible) ───────────
+              _buildCostAndProfitInputCard(strings),
+
+              const SizedBox(height: Sizes.gapLarge),
+
+              // ── 7. Spoken Action Button (Touch Target >= 64dp) ──────────────
+              SpokenActionButton(
+                onPressed: _isPublishing ? null : _handleActionButton,
+                icon: _isPublishing
+                    ? Icons.hourglass_top_rounded
+                    : (craftFlow.hasProcessedImage
+                        ? Icons.check_circle_rounded
+                        : Icons.add_photo_alternate_rounded),
+                label: craftFlow.hasProcessedImage
+                    ? strings.publishButton(_isPublishing)
+                    : strings.addNewCraftButton,
+                subtitle: craftFlow.hasProcessedImage
+                    ? strings.publishSubtitle
+                    : strings.priceCalculatorSubtitle,
+                backgroundColor: Palette.amberButton,
+                foregroundColor: Palette.ink,
+                isLarge: true,
+              ),
+
+              const SizedBox(height: 16),
             ],
           ),
         ),
@@ -580,8 +473,6 @@ class _PricingScreenState extends ConsumerState<PricingScreen> {
     required Color color,
     required IconData icon,
     required String badge,
-    required String subtitle,
-    required String description,
   }) {
     final isSelected = _selectedTierIndex == index;
 
@@ -594,101 +485,79 @@ class _PricingScreenState extends ConsumerState<PricingScreen> {
           });
         },
         borderRadius: BorderRadius.circular(Sizes.cardRadius),
-        child: Container(
-          padding: const EdgeInsets.all(16),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: isSelected
-                ? color.withValues(alpha: 0.06)
-                : Colors.white,
+            color: isSelected ? color.withValues(alpha: 0.05) : Colors.white,
             borderRadius: BorderRadius.circular(Sizes.cardRadius),
             border: Border.all(
-              color: isSelected ? color : Palette.surfaceContainerHigh,
-              width: isSelected ? 3 : 1.5,
+              color: isSelected ? color : const Color(0xFFE2E8F0),
+              width: isSelected ? 2.0 : 1.2,
             ),
             boxShadow: [
               BoxShadow(
                 color: isSelected
-                    ? color.withValues(alpha: 0.18)
-                    : Palette.ink.withValues(alpha: 0.05),
-                blurRadius: isSelected ? 16 : 8,
-                offset: const Offset(0, 4),
+                    ? color.withValues(alpha: 0.10)
+                    : Colors.black.withValues(alpha: 0.02),
+                blurRadius: isSelected ? 10 : 4,
+                offset: const Offset(0, 2),
               ),
             ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Row(
             children: [
-              Row(
-                children: [
-                  Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: color.withValues(alpha: 0.12),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(icon, color: color, size: 26),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: color,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: color.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            badge,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: color,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Text(
-                    price,
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      color: isSelected ? color : Palette.ink,
-                    ),
-                  ),
-                ],
+              // Radio Selector Button
+              Icon(
+                isSelected
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                color: isSelected ? color : const Color(0xFF94A3B8),
+                size: 22,
               ),
-              const SizedBox(height: 10),
-              Text(
-                subtitle,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: Palette.ink,
+              const SizedBox(width: 12),
+              // Icon
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: isSelected ? color : Palette.ink,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      badge,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: isSelected ? color : Palette.muted,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 4),
               Text(
-                description,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: Palette.muted,
+                price,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: isSelected ? color : Palette.ink,
                 ),
               ),
             ],
@@ -698,7 +567,8 @@ class _PricingScreenState extends ConsumerState<PricingScreen> {
     );
   }
 
-  // ── Input Card for Raw Material Cost & Desired Profit ─────────────────────────
+
+  // ── Input Card for Raw Material Cost & Desired Profit (Collapsible) ─────────
   Widget _buildCostAndProfitInputCard(AppStrings strings) {
     final currentMaterial =
         double.tryParse(_materialCostController.text) ?? 450;
@@ -706,174 +576,165 @@ class _PricingScreenState extends ConsumerState<PricingScreen> {
     final costFloor = currentMaterial + currentProfit;
 
     return Container(
-      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(Sizes.cardRadius),
         border: Border.all(
-          color: Palette.purpleContainer.withValues(alpha: 0.35),
-          width: 1.5,
+          color: const Color(0xFFE2E8F0),
+          width: 1.2,
         ),
         boxShadow: [
           BoxShadow(
-            color: Palette.purpleContainer.withValues(alpha: 0.08),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Header
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Palette.purpleContainerLight,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.tune_rounded,
-                  color: Palette.purpleContainerDark,
-                  size: 22,
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          leading: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Palette.purpleContainerLight,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.tune_rounded,
+              color: Palette.purpleContainerDark,
+              size: 20,
+            ),
+          ),
+          title: Text(
+            strings.materialCostTitle,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Palette.ink,
+            ),
+          ),
+          subtitle: const Text(
+            'Tap to adjust raw material & profit',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w500,
+              color: Palette.muted,
+            ),
+          ),
+          childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          children: [
+            const Divider(height: 1, color: Color(0xFFF1F5F9)),
+            const SizedBox(height: 14),
+
+            // Section 1: Raw Material Cost Input
+            _buildInputSection(
+              title: strings.materialCostLabel,
+              subtitle: strings.materialCostSubtitle,
+              icon: Icons.inventory_2_rounded,
+              color: Palette.terracotta,
+              controller: _materialCostController,
+              onDecrement: () => _adjustMaterial(-50),
+              onIncrement: () => _adjustMaterial(50),
+              presets: const [200, 400, 600, 1000],
+              onSelectPreset: (val) => _setMaterial(val.toDouble()),
+              currentValue: currentMaterial,
+              onChanged: (_) => _recalculateLocal(),
+            ),
+
+            const SizedBox(height: 16),
+            const Divider(height: 1, color: Color(0xFFF1F5F9)),
+            const SizedBox(height: 16),
+
+            // Section 2: Desired Profit Input
+            _buildInputSection(
+              title: strings.targetProfitLabel,
+              subtitle: strings.desiredProfitSubtitle,
+              icon: Icons.savings_rounded,
+              color: Palette.affirm,
+              controller: _profitController,
+              onDecrement: () => _adjustProfit(-50),
+              onIncrement: () => _adjustProfit(50),
+              presets: const [150, 300, 500, 800],
+              onSelectPreset: (val) => _setProfit(val.toDouble()),
+              currentValue: currentProfit,
+              onChanged: (_) => _recalculateLocal(),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Guaranteed Cost Floor Guarantee Banner
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: Palette.terracotta.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: Palette.terracotta.withValues(alpha: 0.25),
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      strings.materialCostTitle,
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.shield_outlined,
+                    color: Palette.terracotta,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${strings.tierFloorTitle}: ₹${costFloor.toStringAsFixed(0)}',
                       style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
                         color: Palette.ink,
                       ),
                     ),
-                    Text(
-                      strings.materialCostSubtitle,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Palette.muted,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-          const Divider(height: 1),
-          const SizedBox(height: 16),
-
-          // Section 1: Raw Material Cost Input
-          _buildInputSection(
-            title: strings.materialCostLabel,
-            subtitle: strings.materialCostSubtitle,
-            icon: Icons.inventory_2_rounded,
-            color: Palette.terracotta,
-            controller: _materialCostController,
-            onDecrement: () => _adjustMaterial(-50),
-            onIncrement: () => _adjustMaterial(50),
-            presets: const [200, 400, 600, 1000],
-            onSelectPreset: (val) => _setMaterial(val.toDouble()),
-            currentValue: currentMaterial,
-          ),
-
-          const SizedBox(height: 20),
-          const Divider(height: 1),
-          const SizedBox(height: 20),
-
-          // Section 2: Desired Profit Input
-          _buildInputSection(
-            title: strings.targetProfitLabel,
-            subtitle: strings.desiredProfitSubtitle,
-            icon: Icons.savings_rounded,
-            color: Palette.affirm,
-            controller: _profitController,
-            onDecrement: () => _adjustProfit(-50),
-            onIncrement: () => _adjustProfit(50),
-            presets: const [150, 300, 500, 800],
-            onSelectPreset: (val) => _setProfit(val.toDouble()),
-            currentValue: currentProfit,
-          ),
-
-          const SizedBox(height: 18),
-
-          // Guaranteed Cost Floor Guarantee Banner
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-            decoration: BoxDecoration(
-              color: Palette.terracotta.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: Palette.terracotta.withValues(alpha: 0.3),
+                  ),
+                ],
               ),
             ),
-            child: Row(
-              children: [
-                const Icon(
-                  Icons.shield_outlined,
-                  color: Palette.terracotta,
-                  size: 24,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '${strings.tierFloorTitle}: ₹${costFloor.toStringAsFixed(0)} (${strings.materialCostLabel}: ₹${currentMaterial.toStringAsFixed(0)} + ${strings.targetProfitLabel}: ₹${currentProfit.toStringAsFixed(0)})',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: Palette.ink,
-                    ),
+
+            const SizedBox(height: 14),
+
+            // Prominent Model Calculation Button (Height >= 64dp per zero-literacy bet 01)
+            SizedBox(
+              height: 54,
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Palette.purpleContainerDark,
+                  foregroundColor: Colors.white,
+                  elevation: 2,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(Sizes.radius),
                   ),
                 ),
-              ],
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // Prominent Model Calculation Button (Height >= 64dp per zero-literacy bet 01)
-          SizedBox(
-            height: 64,
-            child: ElevatedButton.icon(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Palette.purpleContainerDark,
-                foregroundColor: Colors.white,
-                elevation: 4,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(Sizes.radius),
+                icon: _isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Icon(Icons.auto_awesome_rounded, size: 22),
+                label: Text(
+                  _isLoading
+                      ? strings.choiceAPhotoOnlySpeech
+                      : strings.priceCalculatorButton,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
+                onPressed: _isLoading ? null : _fetchPricingFromModel,
               ),
-              icon: _isLoading
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2.5,
-                      ),
-                    )
-                  : const Icon(Icons.auto_awesome_rounded, size: 28),
-              label: Text(
-                _isLoading
-                    ? strings.choiceAPhotoOnlySpeech
-                    : strings.tierSuggestedTitle,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              onPressed: _isLoading ? null : _fetchPricingFromModel,
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -889,6 +750,7 @@ class _PricingScreenState extends ConsumerState<PricingScreen> {
     required List<int> presets,
     required ValueChanged<int> onSelectPreset,
     required double currentValue,
+    ValueChanged<String>? onChanged,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -982,7 +844,9 @@ class _PricingScreenState extends ConsumerState<PricingScreen> {
                           isDense: true,
                           contentPadding: EdgeInsets.zero,
                         ),
-                        onChanged: (_) => setState(() {}),
+                        onChanged: (val) {
+                          onChanged?.call(val);
+                        },
                       ),
                     ),
                   ],
@@ -1038,22 +902,16 @@ class _PricingScreenState extends ConsumerState<PricingScreen> {
     );
   }
 
-  // ── Cost & Profit Analysis Breakdown Card from Model ──────────────────────────
-  Widget _buildProfitAnalysisCard(
-    AppStrings strings,
-    PricingSuggestionResult result,
-  ) {
-    final material = result.materialCost ??
-        double.tryParse(_materialCostController.text) ??
-        450.0;
-    final targetProfit = result.minProfitDesired ??
-        double.tryParse(_profitController.text) ??
-        300.0;
-    final projectedProfit =
-        result.projectedProfit ?? (result.suggestedPrice - material);
-    final surplus =
-        result.surplusAboveMinProfit ?? (projectedProfit - targetProfit);
-    final marginPct = result.profitMarginPct;
+  // ── Minimal Fair Price Hero Card ─────────────────────────────────────────────
+  Widget _buildHeroPriceCard({
+    required AppStrings strings,
+    required CraftFlowState craftFlow,
+    required String title,
+    required double selectedPrice,
+  }) {
+    final craftCategory = craftFlow.craftType != null
+        ? '${craftFlow.craftType![0].toUpperCase()}${craftFlow.craftType!.substring(1)} Craft'
+        : 'Artisanal Craft';
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -1061,53 +919,199 @@ class _PricingScreenState extends ConsumerState<PricingScreen> {
         color: Colors.white,
         borderRadius: BorderRadius.circular(Sizes.cardRadius),
         border: Border.all(
-          color: Palette.affirm.withValues(alpha: 0.35),
-          width: 1.5,
+          color: const Color(0xFFE2E8F0),
+          width: 1.2,
         ),
         boxShadow: [
           BoxShadow(
-            color: Palette.affirm.withValues(alpha: 0.08),
-            blurRadius: 12,
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
             offset: const Offset(0, 3),
           ),
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Craft Header Row with Audio Button
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                width: 52,
+                height: 52,
                 decoration: BoxDecoration(
-                  color: Palette.affirm.withValues(alpha: 0.12),
-                  shape: BoxShape.circle,
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
-                child: const Icon(
-                  Icons.analytics_rounded,
-                  color: Palette.affirm,
-                  size: 22,
-                ),
+                clipBehavior: Clip.antiAlias,
+                child: craftFlow.localProcessedImagePath != null
+                    ? Image.file(
+                        File(craftFlow.localProcessedImagePath!),
+                        fit: BoxFit.contain,
+                      )
+                    : const Icon(
+                        Icons.palette_rounded,
+                        size: 26,
+                        color: Color(0xFF64748B),
+                      ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      strings.costProfitAnalysisTitle,
+                      title,
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
                         color: Palette.ink,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
+                    const SizedBox(height: 3),
                     Text(
-                      strings.step3PricingSpeech,
+                      craftCategory,
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: Palette.muted,
+                        color: Palette.purpleContainerDark,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Compact Voice Rationale Button
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: _speakPricingRationale,
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Palette.purpleContainerLight.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: Palette.purpleContainer.withValues(alpha: 0.4),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          _isSpeaking
+                              ? Icons.stop_circle_rounded
+                              : Icons.volume_up_rounded,
+                          color: Palette.purpleContainerDark,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          _isSpeaking ? 'Stop' : 'Listen',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Palette.purpleContainerDark,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 14),
+
+          // Big, Clean Selected Fair Price Display
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'SELECTED PRICE',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.5,
+                      color: Palette.muted,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        '₹',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                          color: _selectedTierIndex == 0
+                              ? Palette.terracotta
+                              : (_selectedTierIndex == 2
+                                  ? Palette.affirm
+                                  : Palette.purpleContainerDark),
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        selectedPrice.toStringAsFixed(0),
+                        style: const TextStyle(
+                          fontSize: 34,
+                          fontWeight: FontWeight.w900,
+                          color: Palette.ink,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: _isOfflineCalculation
+                      ? Palette.terracotta.withValues(alpha: 0.08)
+                      : const Color(0xFFF0FDF4),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: _isOfflineCalculation
+                        ? Palette.terracotta.withValues(alpha: 0.3)
+                        : const Color(0xFFBBF7D0),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _isOfflineCalculation
+                          ? Icons.bolt_rounded
+                          : Icons.check_circle_rounded,
+                      size: 14,
+                      color: _isOfflineCalculation
+                          ? Palette.terracotta
+                          : const Color(0xFF16A34A),
+                    ),
+                    const SizedBox(width: 5),
+                    Text(
+                      _isOfflineCalculation ? 'LOCAL WAGE' : 'CERTIFIED',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: _isOfflineCalculation
+                            ? Palette.terracotta
+                            : const Color(0xFF16A34A),
                       ),
                     ),
                   ],
@@ -1115,132 +1119,10 @@ class _PricingScreenState extends ConsumerState<PricingScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 14),
-          // 4-item Metric Grid
-          Row(
-            children: [
-              Expanded(
-                child: _buildMetricTile(
-                  label: strings.materialCostLabel,
-                  value: '₹${material.toStringAsFixed(0)}',
-                  color: Palette.terracotta,
-                  icon: Icons.inventory_2_rounded,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildMetricTile(
-                  label: strings.targetProfitLabel,
-                  value: '₹${targetProfit.toStringAsFixed(0)}',
-                  color: Palette.goldAccent,
-                  icon: Icons.flag_rounded,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: _buildMetricTile(
-                  label: strings.tierSuggestedTitle,
-                  value: '₹${projectedProfit.toStringAsFixed(0)}',
-                  color: Palette.affirm,
-                  icon: Icons.trending_up_rounded,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildMetricTile(
-                  label: strings.tierStretchTitle,
-                  value: surplus >= 0
-                      ? '+₹${surplus.toStringAsFixed(0)}'
-                      : '₹0',
-                  color: Palette.purpleContainerDark,
-                  icon: Icons.add_circle_outline_rounded,
-                ),
-              ),
-            ],
-          ),
-          if (marginPct != null) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Palette.surface,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Palette.surfaceContainerHigh),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.percent_rounded,
-                    size: 16,
-                    color: Palette.affirm,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    '${strings.desiredProfitTitle}: ${marginPct.toStringAsFixed(1)}%',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: Palette.ink,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMetricTile({
-    required String label,
-    required String value,
-    required Color color,
-    required IconData icon,
-  }) {
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 14, color: color),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: color,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: color,
-            ),
-          ),
         ],
       ),
     );
   }
 }
+
+

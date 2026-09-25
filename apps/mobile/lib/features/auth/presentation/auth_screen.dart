@@ -579,7 +579,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       : (_isRegisterMode
                           ? strings.joinShilpsetu
                           : strings.loginButton),
-                  subtitle: strings.offlineSyncNotice,
                   backgroundColor: _isRegisterMode
                       ? Palette.affirm
                       : Palette.primary,

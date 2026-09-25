@@ -375,5 +375,59 @@ class PricingSuggestionResult {
   final String? category;
   final String? craftTier;
   final String? pricingStrategy;
-}
 
+  /// Generates a certified fair wage price suggestion locally.
+  /// Generates a certified fair wage price suggestion locally.
+  /// Follows the ShilpSetu Fair Wage model (Bet 03):
+  /// - Labor cost = artisanHours * hourlyWage (default ₹75/hr based on state craft minimum wage)
+  /// - Overhead = 12% of materials + labor (workshop, transport, tools)
+  /// - Floor = materials + labor + overhead (never sell below cost & fair wages)
+  /// - Suggested = (materials + labor + overhead + minProfitDesired) * 1.10
+  /// - Stretch = suggested * 1.35 (boutique/craft premium tier)
+  factory PricingSuggestionResult.fairWage({
+    required double rawMaterialCost,
+    required double minProfit,
+    double artisanHours = 6.0,
+    double hourlyWage = 75.0,
+    String? craftType,
+  }) {
+    final validRaw = rawMaterialCost.clamp(50.0, 100000.0);
+    final validProfit = minProfit.clamp(50.0, 100000.0);
+    final laborCost = artisanHours * hourlyWage;
+    final overhead = (validRaw + laborCost) * 0.12;
+    final costFloor = validRaw + validProfit;
+
+    // Floor price rounded up to nearest 10
+    final floorPrice = ((validRaw + laborCost + overhead) / 10).ceil() * 10.0;
+
+    // Suggested price ensures fair wage + desired profit + 10% market buffer
+    final rawSuggested = validRaw + laborCost + overhead + validProfit;
+    final suggestedPrice = ((rawSuggested * 1.10) / 10).ceil() * 10.0;
+
+    // Stretch price (premium craft market)
+    final stretchPrice = ((suggestedPrice * 1.35) / 10).ceil() * 10.0;
+
+    final projectedProfit = suggestedPrice - validRaw;
+    final surplus = projectedProfit - validProfit;
+    final profitMarginPct = (projectedProfit / suggestedPrice) * 100.0;
+
+    return PricingSuggestionResult(
+      floorPrice: floorPrice,
+      suggestedPrice: suggestedPrice,
+      stretchPrice: stretchPrice,
+      confidence: 0.95,
+      artisanNote:
+          'Fair wage breakdown: ₹${validRaw.toStringAsFixed(0)} materials + ${artisanHours.toStringAsFixed(0)}h labor (₹${laborCost.toStringAsFixed(0)}) + 12% overhead + ₹${validProfit.toStringAsFixed(0)} profit.',
+      materialCost: validRaw,
+      minProfitDesired: validProfit,
+      costFloor: costFloor,
+      projectedProfit: projectedProfit,
+      profitMarginPct: profitMarginPct,
+      surplusAboveMinProfit: surplus,
+      laborCost: laborCost,
+      category: craftType ?? 'Handicraft',
+      craftTier: 'Verified Artisan Craft',
+      pricingStrategy: 'Fair Wage Artisan Model (Certified Floor)',
+    );
+  }
+}

@@ -265,16 +265,25 @@ class _AppInfoBottomSheetState extends ConsumerState<AppInfoBottomSheet> {
           ),
           title: Row(
             children: [
-              Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: Palette.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: const Icon(
-                  Icons.account_balance_rounded,
-                  color: Palette.primary,
-                  size: 26,
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.asset(
+                  'assets/icons/app_logo.png',
+                  width: 38,
+                  height: 38,
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: Palette.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.palette_rounded,
+                      color: Palette.primary,
+                      size: 26,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: 10),

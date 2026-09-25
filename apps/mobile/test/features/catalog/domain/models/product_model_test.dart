@@ -144,5 +144,21 @@ void main() {
       expect(res.laborCost, 650.46);
       expect(res.artisanNote, 'Market demand allows Rs. 1100.');
     });
+
+    test('PricingSuggestionResult.fairWage calculates instant transparent pricing', () {
+      final res = PricingSuggestionResult.fairWage(
+        rawMaterialCost: 450,
+        minProfit: 300,
+        craftType: 'terracotta',
+      );
+
+      // Floor must cover materials (450) + 6h labor @ 75 (450) + 12% overhead (108) = 1008 -> 1010
+      expect(res.floorPrice, greaterThanOrEqualTo(1008.0));
+      expect(res.suggestedPrice, greaterThan(res.floorPrice));
+      expect(res.stretchPrice, greaterThan(res.suggestedPrice));
+      expect(res.projectedProfit, greaterThanOrEqualTo(300.0));
+      expect(res.category, 'terracotta');
+      expect(res.artisanNote, contains('Fair wage breakdown'));
+    });
   });
 }

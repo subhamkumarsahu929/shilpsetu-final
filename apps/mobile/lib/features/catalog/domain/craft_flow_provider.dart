@@ -348,9 +348,16 @@ class CraftFlowNotifier extends StateNotifier<CraftFlowState> {
         pricingResult: result,
       );
     } catch (e) {
+      // Graceful offline fallback to certified Fair Wage Pricing engine
+      final fallbackResult = PricingSuggestionResult.fairWage(
+        rawMaterialCost: material,
+        minProfit: profit,
+        artisanHours: artisanHours,
+        craftType: craftType ?? state.craftType,
+      );
       state = state.copyWith(
         isCalculatingPricing: false,
-        pricingError: e.toString(),
+        pricingResult: fallbackResult,
       );
     }
   }

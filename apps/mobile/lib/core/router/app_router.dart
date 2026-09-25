@@ -7,18 +7,23 @@ import 'package:shilpsetu/features/auth/presentation/auth_screen.dart';
 import 'package:shilpsetu/features/capture/presentation/capture_screen.dart';
 import 'package:shilpsetu/features/catalog/presentation/catalog_screen.dart';
 import 'package:shilpsetu/features/cataloger/presentation/cataloger_screen.dart';
-import 'package:shilpsetu/features/enquiries/presentation/enquiries_screen.dart';
 import 'package:shilpsetu/features/home/presentation/home_screen.dart';
 import 'package:shilpsetu/features/language/presentation/language_selection_screen.dart';
 import 'package:shilpsetu/features/pricing/presentation/pricing_screen.dart';
+import 'package:shilpsetu/features/splash/presentation/splash_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final rootNavigatorKey = GlobalKey<NavigatorState>();
 
   return GoRouter(
     navigatorKey: rootNavigatorKey,
-    initialLocation: '/language',
+    initialLocation: '/splash',
     routes: [
+      GoRoute(
+        path: '/splash',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) => const SplashScreen(),
+      ),
       GoRoute(
         path: '/language',
         parentNavigatorKey: rootNavigatorKey,
@@ -60,16 +65,6 @@ final routerProvider = Provider<GoRouter>((ref) {
                 path: '/catalog',
                 pageBuilder: (context, state) => const NoTransitionPage(
                   child: CatalogScreen(),
-                ),
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
-                path: '/enquiries',
-                pageBuilder: (context, state) => const NoTransitionPage(
-                  child: EnquiriesScreen(),
                 ),
               ),
             ],
@@ -154,15 +149,6 @@ class _ScaffoldWithNavBar extends ConsumerWidget {
                   color: Palette.purpleContainerDark,
                 ),
                 label: langState.strings.navCatalog,
-              ),
-              NavigationDestination(
-                icon: const Icon(Icons.mark_chat_unread_outlined, size: 28),
-                selectedIcon: const Icon(
-                  Icons.mark_chat_unread_rounded,
-                  size: 30,
-                  color: Palette.purpleContainerDark,
-                ),
-                label: langState.strings.navOrders,
               ),
             ],
           ),

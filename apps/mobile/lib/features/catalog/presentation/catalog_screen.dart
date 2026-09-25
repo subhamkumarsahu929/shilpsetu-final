@@ -3,10 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:go_router/go_router.dart';
-import 'package:shilpsetu/core/api/api_provider.dart';
 import 'package:shilpsetu/core/localization/language_provider.dart';
 import 'package:shilpsetu/core/theme/accessible_widgets.dart';
 import 'package:shilpsetu/core/theme/tokens.dart';
+import 'package:shilpsetu/features/catalog/domain/catalog_feed_provider.dart';
 import 'package:shilpsetu/features/catalog/domain/models/product_model.dart';
 import 'package:shilpsetu/features/catalog/presentation/widgets/product_card_widget.dart';
 import 'package:shilpsetu/features/home/presentation/widgets/app_info_menu.dart';
@@ -15,6 +15,7 @@ import 'package:shilpsetu/features/home/presentation/widgets/app_info_menu.dart'
 ///
 /// Integrates:
 /// - ShilpSetu AI Backend Catalog Feed API (`GET /api/v1/products/feed`)
+/// - Cached catalogFeedProvider pre-warmed during splash screen for instant load
 /// - Product data model with dual Hindi/English titles & descriptions
 /// - Reusable cached network image product cards
 /// - Individual audio readback with soundwave animation
@@ -28,15 +29,14 @@ class CatalogScreen extends ConsumerStatefulWidget {
 class _CatalogScreenState extends ConsumerState<CatalogScreen> {
   late final FlutterTts _tts;
   String? _activePlayingId;
-  List<Product> _products = [];
-  bool _isLoading = true;
-  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
     _initTts();
-    _loadCatalogFeed();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(catalogFeedProvider.notifier).loadFeed();
+    });
   }
 
   Future<void> _initTts() async {
@@ -60,29 +60,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
   }
 
   Future<void> _loadCatalogFeed() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
-    try {
-      final apiService = ref.read(shilpSetuApiServiceProvider);
-      final remoteFeed = await apiService.getCatalogFeed();
-      if (mounted) {
-        setState(() {
-          _products = remoteFeed;
-          _errorMessage = null;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _products = [];
-          _errorMessage = e.toString();
-          _isLoading = false;
-        });
-      }
-    }
+    await ref.read(catalogFeedProvider.notifier).loadFeed(forceRefresh: true);
   }
 
   Future<void> _speakText(String id, String text) async {
@@ -150,6 +128,11 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
     final lang = langState.selectedLanguage;
     final strings = langState.strings;
 
+    final feedState = ref.watch(catalogFeedProvider);
+    final products = feedState.products;
+    final isLoading = feedState.isLoading && !feedState.isLoaded;
+    final errorMessage = feedState.errorMessage;
+
     return Scaffold(
       backgroundColor: Palette.surface,
       appBar: AppBar(
@@ -173,7 +156,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
               unawaited(
                 _speakText(
                   'appbar_overview',
-                  strings.catalogOverviewSpeech(_products.length),
+                  strings.catalogOverviewSpeech(products.length),
                 ),
               );
             },
@@ -206,7 +189,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                     unawaited(
                       _speakText(
                         'header_card',
-                        strings.catalogOverviewSpeech(_products.length),
+                        strings.catalogOverviewSpeech(products.length),
                       ),
                     );
                   },
@@ -235,7 +218,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        '${_products.length} Items',
+                        '${products.length} Items',
                         style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w800,
@@ -249,7 +232,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                 const SizedBox(height: Sizes.gapMedium),
 
                 // Loading State, Error State, Empty State, or Product Cards List
-                if (_isLoading)
+                if (isLoading)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 40),
                     child: Center(
@@ -258,7 +241,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                       ),
                     ),
                   )
-                else if (_errorMessage != null)
+                else if (errorMessage != null && products.isEmpty)
                   Container(
                     margin: const EdgeInsets.symmetric(vertical: 16),
                     padding: const EdgeInsets.all(16),
@@ -280,7 +263,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: Text(
-                                _errorMessage!,
+                                errorMessage,
                                 style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,
@@ -309,7 +292,7 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                       ],
                     ),
                   )
-                else if (_products.isEmpty)
+                else if (products.isEmpty)
                   Container(
                     margin: const EdgeInsets.symmetric(vertical: 24),
                     padding: const EdgeInsets.all(28),
@@ -360,11 +343,11 @@ class _CatalogScreenState extends ConsumerState<CatalogScreen> {
                   ListView.separated(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
-                    itemCount: _products.length,
+                    itemCount: products.length,
                     separatorBuilder: (_, __) =>
                         const SizedBox(height: Sizes.gapMedium),
                     itemBuilder: (context, index) {
-                      final product = _products[index];
+                      final product = products[index];
                       final isPlaying = _activePlayingId == 'prod_${product.id}';
 
                       return ProductCardWidget(
