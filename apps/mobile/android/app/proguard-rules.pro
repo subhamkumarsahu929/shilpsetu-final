@@ -24,4 +24,9 @@
 -dontwarn com.arthenica.ffmpegkit.**
 -dontwarn io.flutter.plugins.camera.**
 
-
+# Google Play Core & Deferred Components (R8 warning suppression)
+-dontwarn com.google.android.play.core.**
+-dontwarn com.google.android.play.core.splitcompat.**
+-dontwarn com.google.android.play.core.splitinstall.**
+-dontwarn com.google.android.play.core.tasks.**
+-dontwarn io.flutter.embedding.engine.deferredcomponents.**
