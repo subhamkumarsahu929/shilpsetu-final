@@ -1,19 +1,22 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:go_router/go_router.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+import 'package:record/record.dart';
 import 'package:shilpsetu/core/localization/language_provider.dart';
 import 'package:shilpsetu/core/theme/accessible_widgets.dart';
 import 'package:shilpsetu/core/theme/tokens.dart';
+import 'package:shilpsetu/features/catalog/domain/craft_flow_provider.dart';
 
-/// Cataloger Screen.
+/// Step 2 of Craft Flow: Model suggests description.
 ///
-/// Features:
-/// - Displays and speaks exclusively in the user's selected language
-/// - Giant tactile audio recording button (96dp)
-/// - Visual audio wave bars while recording
-/// - Spoken readback of extracted craft attributes
+/// Gives the artisan two distinct choices:
+/// 1. Only Photo: AI vision model analyzes craft photo to generate description
+/// 2. Photo with Voice: Artisan speaks into mic to combine photo + voice note
 class CatalogerScreen extends ConsumerStatefulWidget {
   const CatalogerScreen({super.key});
 
@@ -24,33 +27,17 @@ class CatalogerScreen extends ConsumerStatefulWidget {
 class _CatalogerScreenState extends ConsumerState<CatalogerScreen>
     with SingleTickerProviderStateMixin {
   late final FlutterTts _tts;
+  late final AudioRecorder _audioRecorder;
   late final AnimationController _pulseController;
 
   bool _isRecording = false;
-  bool _hasRecorded = false;
   bool _isPlayingReadback = false;
-
-  final List<String> _sampleAttributesHindi = const [
-    'शुद्ध मिट्टी',
-    '8 घंटे का श्रम',
-    'पारंपरिक दीया',
-    'प्राकृतिक रंग',
-    'हाथ से तराशा गया',
-  ];
-
-  final List<String> _sampleAttributesEnglish = const [
-    'Pure Terracotta Clay',
-    '8 Hours Artisan Labor',
-    'Traditional Diya Set',
-    '100% Natural Organic Dyes',
-    'Hand Sculpted Finish',
-  ];
-
   bool _isPlayingPrompt = false;
 
   @override
   void initState() {
     super.initState();
+    _audioRecorder = AudioRecorder();
     _initTts();
     _pulseController = AnimationController(
       vsync: this,
@@ -98,11 +85,7 @@ class _CatalogerScreenState extends ConsumerState<CatalogerScreen>
       try {
         await _tts.stop();
       } catch (_) {}
-      if (mounted) {
-        setState(() {
-          _isPlayingPrompt = false;
-        });
-      }
+      if (mounted) setState(() => _isPlayingPrompt = false);
       return;
     }
 
@@ -119,20 +102,77 @@ class _CatalogerScreenState extends ConsumerState<CatalogerScreen>
     } catch (_) {}
   }
 
-  void _toggleRecording() {
-    setState(() {
-      _isRecording = !_isRecording;
-      if (_isRecording) {
-        _hasRecorded = false;
-        _pulseController.repeat(reverse: true);
-      } else {
-        _hasRecorded = true;
-        _pulseController
-          ..stop()
-          ..reset();
-        _playReadback();
+  /// Choice A: Model generates description using ONLY the photo
+  Future<void> _onChoosePhotoOnly() async {
+    final lang = ref.read(languageProvider).selectedLanguage;
+    final strings = lang.strings;
+
+    unawaited(_speakPrompt(strings.choiceAPhotoOnlySpeech));
+
+    await ref
+        .read(craftFlowProvider.notifier)
+        .generateDescriptionFromPhotoOnly(languageCode: lang.code);
+
+    if (mounted) {
+      _playReadback();
+    }
+  }
+
+  /// Choice B: Start/stop recording voice note to describe craft with Photo + Voice
+  Future<void> _toggleVoiceRecording() async {
+    final lang = ref.read(languageProvider).selectedLanguage;
+
+    if (_isRecording) {
+      // Stop recording
+      setState(() => _isRecording = false);
+      _pulseController
+        ..stop()
+        ..reset();
+
+      try {
+        final path = await _audioRecorder.stop();
+        if (path != null && File(path).existsSync()) {
+          await ref.read(craftFlowProvider.notifier).generateDescriptionWithVoice(
+                audioFile: File(path),
+                languageCode: lang.code,
+              );
+          if (mounted) {
+            _playReadback();
+          }
+        }
+      } catch (e) {
+        debugPrint('Error stopping audio recorder: $e');
       }
-    });
+    } else {
+      // Start recording
+      final hasPermission = await _audioRecorder.hasPermission();
+      if (!hasPermission) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Microphone permission required for voice recording'),
+            ),
+          );
+        }
+        return;
+      }
+
+      final tempDir = await getTemporaryDirectory();
+      final path = p.join(
+        tempDir.path,
+        'voice_catalog_${DateTime.now().millisecondsSinceEpoch}.m4a',
+      );
+
+      await _audioRecorder.start(
+        const RecordConfig(),
+        path: path,
+      );
+
+      if (mounted) {
+        setState(() => _isRecording = true);
+        unawaited(_pulseController.repeat(reverse: true));
+      }
+    }
   }
 
   Future<void> _playReadback() async {
@@ -140,14 +180,11 @@ class _CatalogerScreenState extends ConsumerState<CatalogerScreen>
       try {
         await _tts.stop();
       } catch (_) {}
-      if (mounted) {
-        setState(() {
-          _isPlayingReadback = false;
-        });
-      }
+      if (mounted) setState(() => _isPlayingReadback = false);
       return;
     }
 
+    final craftFlow = ref.read(craftFlowProvider);
     final lang = ref.read(languageProvider).selectedLanguage;
     final isEnglish = lang == AppLanguage.english;
 
@@ -156,35 +193,58 @@ class _CatalogerScreenState extends ConsumerState<CatalogerScreen>
       _isPlayingPrompt = false;
     });
 
-    final readbackText = isEnglish
-        ? 'We generated this description from your voice: Handmade Terracotta craft, made with pure organic clay over eight hours of skilled artisan labor.'
-        : 'हमने आपकी आवाज़ से यह जानकारी बनाई है: हाथ से बना टेराकोटा शिल्प, शुद्ध प्राकृतिक मिट्टी से 8 घंटे के श्रम में निर्मित।';
+    String speech;
+    if (craftFlow.descriptionError != null) {
+      speech = isEnglish
+          ? 'Description model error: ${craftFlow.descriptionError}'
+          : 'विवरण मॉडल में त्रुटि: ${craftFlow.descriptionError}';
+    } else if (craftFlow.hasDescription) {
+      final title = isEnglish
+          ? (craftFlow.titleEn ?? craftFlow.titleHi ?? '')
+          : (craftFlow.titleHi ?? craftFlow.titleEn ?? '');
+      final desc = isEnglish
+          ? (craftFlow.descriptionEn ?? craftFlow.descriptionHi ?? '')
+          : (craftFlow.descriptionHi ?? craftFlow.descriptionEn ?? '');
+      speech = '$title. $desc';
+    } else {
+      speech = isEnglish
+          ? 'Choose whether to generate description from photo only or with your voice.'
+          : 'विवरण बनाने के लिए केवल फोटो या अपनी आवाज़ का विकल्प चुनें।';
+    }
 
     try {
       await _tts.stop();
       await _tts.setLanguage(lang.ttsLocale);
-      await _tts.speak(readbackText);
+      await _tts.speak(speech);
     } catch (_) {}
   }
 
   @override
   void dispose() {
     _pulseController.dispose();
+    unawaited(_audioRecorder.dispose());
     unawaited(_tts.stop());
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final lang = ref.watch(languageProvider).selectedLanguage;
-    final isEnglish = lang == AppLanguage.english;
-    final attributes =
-        isEnglish ? _sampleAttributesEnglish : _sampleAttributesHindi;
+    final langState = ref.watch(languageProvider);
+    final lang = langState.selectedLanguage;
+    final strings = langState.strings;
+    final craftFlow = ref.watch(craftFlowProvider);
+
+    final title = lang == AppLanguage.english
+        ? (craftFlow.titleEn ?? craftFlow.titleHi)
+        : (craftFlow.titleHi ?? craftFlow.titleEn);
+    final description = lang == AppLanguage.english
+        ? (craftFlow.descriptionEn ?? craftFlow.descriptionHi)
+        : (craftFlow.descriptionHi ?? craftFlow.descriptionEn);
 
     return Scaffold(
       backgroundColor: Palette.surface,
       appBar: AppBar(
-        title: ShilpsetuBrandLogo(isHindi: !isEnglish),
+        title: ShilpsetuBrandLogo(language: lang),
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
@@ -193,7 +253,7 @@ class _CatalogerScreenState extends ConsumerState<CatalogerScreen>
             if (context.canPop()) {
               context.pop();
             } else {
-              context.go('/home');
+              context.go('/capture');
             }
           },
         ),
@@ -205,13 +265,7 @@ class _CatalogerScreenState extends ConsumerState<CatalogerScreen>
               foregroundColor: Palette.goldAccent,
             ),
             onPressed: () {
-              unawaited(
-                _speakPrompt(
-                  isEnglish
-                      ? 'Tell us about your craft, such as colors, materials, and time taken to make it.'
-                      : 'अपने उत्पाद के बारे में बताइए जैसे रंग, सामग्री और इसे बनाने में कितना समय लगा।',
-                ),
-              );
+              unawaited(_speakPrompt(strings.step2Prompt));
             },
           ),
           const SizedBox(width: 12),
@@ -223,129 +277,430 @@ class _CatalogerScreenState extends ConsumerState<CatalogerScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Signature Purple Prompt Banner
+              // ── Step 1 Result Banner: Background Removed Craft Preview ──
+              if (craftFlow.hasProcessedImage) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(Sizes.cardRadius),
+                    border: Border.all(
+                      color: Palette.affirm.withValues(alpha: 0.3),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Palette.ink.withValues(alpha: 0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 76,
+                        height: 76,
+                        decoration: BoxDecoration(
+                          color: Palette.surface,
+                          borderRadius: BorderRadius.circular(Sizes.radius),
+                          border: Border.all(
+                            color: Palette.surfaceContainerHigh,
+                          ),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: craftFlow.localProcessedImagePath != null
+                            ? Image.file(
+                                File(craftFlow.localProcessedImagePath!),
+                                fit: BoxFit.contain,
+                              )
+                            : const Icon(
+                                Icons.image_rounded,
+                                color: Palette.muted,
+                              ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            TripleChannelStatusBadge(
+                              label: strings.step2StoryBadge,
+                              icon: Icons.check_circle_rounded,
+                              color: Palette.affirm,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              strings.step2Prompt,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: Palette.ink,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: Sizes.gapMedium),
+              ],
+
+              // ── Signature Purple Prompt Banner ─────────────────────────────
               ZeroLiteracyPromptCard(
-                promptText: _isRecording
-                    ? (isEnglish
-                        ? 'Listening to your voice...'
-                        : 'हम सुन रहे हैं... बोलते रहिए')
-                    : _hasRecorded
-                        ? (isEnglish
-                            ? 'Confirm generated craft details'
-                            : 'विवरण की पुष्टि करें')
-                        : (isEnglish
-                            ? 'Tell about colors, materials, and time'
-                            : 'इसके बारे में बताइए (रंग, सामग्री, समय)'),
-                icon: _isRecording
-                    ? Icons.graphic_eq_rounded
-                    : Icons.mic_rounded,
+                promptText: craftFlow.isGeneratingDescription
+                    ? strings.choiceAPhotoOnlySpeech
+                    : _isRecording
+                        ? strings.recordingInProgress
+                        : craftFlow.hasDescription
+                            ? strings.descriptionPreviewTitle
+                            : strings.step2Prompt,
+                icon: craftFlow.isGeneratingDescription
+                    ? Icons.hourglass_top_rounded
+                    : _isRecording
+                        ? Icons.graphic_eq_rounded
+                        : Icons.auto_awesome_rounded,
                 accentColor: _isRecording ? Palette.revise : Palette.purpleContainer,
                 onReplayAudio: () {
-                  unawaited(
-                    _speakPrompt(
-                      isEnglish
-                          ? 'Tap the microphone and speak about your craft.'
-                          : 'माइक बटन दबाएं और अपने शिल्प के बारे में बोलकर बताएं।',
-                    ),
-                  );
+                  unawaited(_speakPrompt(strings.step2Prompt));
                 },
               ),
 
               const SizedBox(height: Sizes.gapLarge),
 
-              // Giant Mic Button
-              Center(
-                child: Column(
-                  children: [
-                    AnimatedBuilder(
-                      animation: _pulseController,
-                      builder: (context, child) {
-                        final scale =
-                            _isRecording ? 1.0 + (_pulseController.value * 0.12) : 1.0;
-                        return Transform.scale(
-                          scale: scale,
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: _toggleRecording,
-                              borderRadius: BorderRadius.circular(60),
-                              child: Container(
-                                width: 110,
-                                height: 110,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: LinearGradient(
-                                    colors: _isRecording
-                                        ? [Palette.revise, const Color(0xFFD32F2F)]
-                                        : [
-                                            Palette.purpleContainer,
-                                            Palette.purpleContainerDark,
-                                          ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: (_isRecording
-                                              ? Palette.revise
-                                              : Palette.purpleContainerDark)
-                                          .withValues(alpha: 0.4),
-                                      blurRadius: _isRecording ? 24 : 16,
-                                      offset: const Offset(0, 6),
-                                    ),
-                                  ],
-                                ),
-                                child: Icon(
-                                  _isRecording
-                                      ? Icons.stop_rounded
-                                      : Icons.mic_rounded,
-                                  size: 52,
-                                  color: Colors.white,
+              // ── THE TWO CHOICES (Photo Only vs Photo + Voice) ───────────────
+              Text(
+                strings.step2Prompt,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: Palette.ink,
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // ── CHOICE 1: Only Photo ───────────────────────────────────────
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: craftFlow.isGeneratingDescription || _isRecording
+                      ? null
+                      : _onChoosePhotoOnly,
+                  borderRadius: BorderRadius.circular(Sizes.cardRadius),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: !craftFlow.usedVoice && craftFlow.hasDescription
+                          ? Palette.purpleContainerLight
+                          : Colors.white,
+                      borderRadius: BorderRadius.circular(Sizes.cardRadius),
+                      border: Border.all(
+                        color: !craftFlow.usedVoice && craftFlow.hasDescription
+                            ? Palette.purpleContainer
+                            : Palette.surfaceContainerHigh,
+                        width: !craftFlow.usedVoice && craftFlow.hasDescription ? 2.5 : 1.5,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Palette.ink.withValues(alpha: 0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 3),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: Palette.purpleContainerLight,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.auto_awesome_rounded,
+                            color: Palette.purpleContainerDark,
+                            size: 30,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                strings.choiceAPhotoOnlyTitle,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: Palette.ink,
                                 ),
                               ),
+                              const SizedBox(height: 4),
+                              Text(
+                                strings.choiceAPhotoOnlySubtitle,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Palette.muted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (craftFlow.isGeneratingDescription && !craftFlow.usedVoice)
+                          const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2.5),
+                          )
+                        else
+                          const Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            color: Palette.purpleContainerDark,
+                            size: 20,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              // ── CHOICE 2: Photo with Voice ─────────────────────────────────
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: craftFlow.usedVoice && craftFlow.hasDescription
+                      ? Palette.purpleContainerLight
+                      : Colors.white,
+                  borderRadius: BorderRadius.circular(Sizes.cardRadius),
+                  border: Border.all(
+                    color: craftFlow.usedVoice && craftFlow.hasDescription
+                        ? Palette.purpleContainer
+                        : Palette.surfaceContainerHigh,
+                    width: craftFlow.usedVoice && craftFlow.hasDescription ? 2.5 : 1.5,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Palette.ink.withValues(alpha: 0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            color: Palette.goldAccentLight,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.mic_rounded,
+                            color: Palette.goldAccent,
+                            size: 30,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                strings.choiceBVoiceTitle,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: Palette.ink,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                strings.choiceBVoiceSubtitle,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Palette.muted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Giant Mic Button
+                    Center(
+                      child: Column(
+                        children: [
+                          AnimatedBuilder(
+                            animation: _pulseController,
+                            builder: (context, child) {
+                              final scale = _isRecording
+                                  ? 1.0 + (_pulseController.value * 0.12)
+                                  : 1.0;
+                              return Transform.scale(
+                                scale: scale,
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: craftFlow.isGeneratingDescription
+                                        ? null
+                                        : _toggleVoiceRecording,
+                                    borderRadius: BorderRadius.circular(55),
+                                    child: Container(
+                                      width: 88,
+                                      height: 88,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        gradient: LinearGradient(
+                                          colors: _isRecording
+                                              ? [Palette.revise, const Color(0xFFD32F2F)]
+                                              : [
+                                                  Palette.purpleContainer,
+                                                  Palette.purpleContainerDark,
+                                                ],
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: (_isRecording
+                                                    ? Palette.revise
+                                                    : Palette.purpleContainerDark)
+                                                .withValues(alpha: 0.35),
+                                            blurRadius: _isRecording ? 20 : 12,
+                                            offset: const Offset(0, 4),
+                                          ),
+                                        ],
+                                      ),
+                                      child: Icon(
+                                        _isRecording
+                                            ? Icons.stop_rounded
+                                            : Icons.mic_rounded,
+                                        size: 44,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            strings.choiceBVoiceButton(_isRecording),
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: _isRecording
+                                  ? Palette.revise
+                                  : Palette.purpleContainerDark,
                             ),
                           ),
-                        );
-                      },
-                    ),
-
-                    const SizedBox(height: Sizes.gapMedium),
-
-                    Text(
-                      _isRecording
-                          ? (isEnglish ? 'Recording...' : 'सुन रहे हैं...')
-                          : (isEnglish
-                              ? 'Tap to Speak'
-                              : 'बोलने के लिए टैप करें'),
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        color: _isRecording ? Palette.revise : Palette.purpleContainerDark,
+                          if (_isRecording) ...[
+                            const SizedBox(height: 8),
+                            const SoundWaveBars(
+                              color: Palette.revise,
+                              barCount: 7,
+                            ),
+                          ],
+                        ],
                       ),
                     ),
-
-                    if (_isRecording) ...[
-                      const SizedBox(height: 12),
-                      const SoundWaveBars(
-                        color: Palette.revise,
-                        barCount: 7,
-                      ),
-                    ],
                   ],
                 ),
               ),
 
               const SizedBox(height: Sizes.gapLarge),
 
-              // Generated Attributes Card
-              if (_hasRecorded) ...[
+              // ── Loading Indicator ──────────────────────────────────────────
+              if (craftFlow.isGeneratingDescription) ...[
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(Sizes.cardRadius),
+                    border: Border.all(color: Palette.surfaceContainerHigh),
+                  ),
+                  child: Column(
+                    children: [
+                      const CircularProgressIndicator(
+                        color: Palette.purpleContainerDark,
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        strings.choiceAPhotoOnlySpeech,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: Palette.ink,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: Sizes.gapLarge),
+              ],
+
+              // ── Error Banner (No Hardcoded Fallback!) ──────────────────────
+              if (craftFlow.descriptionError != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Palette.revise.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(Sizes.cardRadius),
+                    border: Border.all(color: Palette.revise, width: 2),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.error_outline_rounded,
+                            color: Palette.revise,
+                            size: 28,
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              craftFlow.descriptionError!,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: Palette.revise,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: Sizes.gapLarge),
+              ],
+
+              // ── Generated Description Display ──────────────────────────────
+              if (craftFlow.hasDescription) ...[
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(Sizes.cardRadius),
                     border: Border.all(
-                      color: Palette.purpleContainer.withValues(alpha: 0.3),
+                      color: Palette.purpleContainer.withValues(alpha: 0.35),
                       width: 1.5,
                     ),
                     boxShadow: [
@@ -367,17 +722,16 @@ class _CatalogerScreenState extends ConsumerState<CatalogerScreen>
                             size: 24,
                           ),
                           const SizedBox(width: 8),
-                          Text(
-                            isEnglish
-                                ? 'Recognized Craft Attributes:'
-                                : 'पहचाने गए विवरण:',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              color: Palette.ink,
+                          Expanded(
+                            child: Text(
+                              strings.descriptionPreviewTitle,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: Palette.ink,
+                              ),
                             ),
                           ),
-                          const Spacer(),
                           IconButton(
                             icon: Icon(
                               _isPlayingReadback
@@ -390,55 +744,80 @@ class _CatalogerScreenState extends ConsumerState<CatalogerScreen>
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: attributes.map((attr) {
-                          return Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 8,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Palette.purpleContainerLight,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: Palette.purpleContainer
-                                    .withValues(alpha: 0.3),
+                      if (title != null && title.isNotEmpty) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: Palette.ink,
+                          ),
+                        ),
+                      ],
+                      if (craftFlow.features.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: craftFlow.features.map((attr) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
                               ),
-                            ),
-                            child: Text(
-                              attr,
-                              style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: Palette.purpleContainerDark,
+                              decoration: BoxDecoration(
+                                color: Palette.purpleContainerLight,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: Palette.purpleContainer
+                                      .withValues(alpha: 0.3),
+                                ),
                               ),
-                            ),
-                          );
-                        }).toList(),
-                      ),
+                              child: Text(
+                                attr,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: Palette.purpleContainerDark,
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                      if (description != null && description.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        const Divider(),
+                        const SizedBox(height: 6),
+                        Text(
+                          description,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: Palette.ink,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
-                const SizedBox(height: Sizes.gapLarge),
-              ],
 
-              // Next Action Button in Amber styling
-              SpokenActionButton(
-                onPressed: () {
-                  context.push('/pricing');
-                },
-                icon: Icons.currency_rupee_rounded,
-                label: isEnglish ? 'Check Fair Price' : 'उचित मूल्य तय करें',
-                subtitle: isEnglish
-                    ? 'Fair wage and pricing breakdown'
-                    : 'उचित मजदूरी एवं बाज़ार मूल्य विवरण',
-                backgroundColor: Palette.amberButton,
-                foregroundColor: Palette.ink,
-                isLarge: true,
-              ),
+                const SizedBox(height: Sizes.gapLarge),
+
+                // Step 3 Proceed Button
+                SpokenActionButton(
+                  onPressed: () {
+                    context.push('/pricing');
+                  },
+                  icon: Icons.currency_rupee_rounded,
+                  label: strings.continueToPricingButton,
+                  subtitle: strings.continueToPricingSubtitle,
+                  backgroundColor: Palette.amberButton,
+                  foregroundColor: Palette.ink,
+                  isLarge: true,
+                ),
+              ],
             ],
           ),
         ),

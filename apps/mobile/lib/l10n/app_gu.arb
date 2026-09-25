@@ -1,0 +1,17 @@
+{
+  "@@locale": "gu",
+  "appTitle": "શિલ્પસેતુ",
+  "capturePrompt": "તમે જે બનાવ્યું તે બતાવો",
+  "recordPrompt": "તેના વિશે કહો",
+  "confirmPublish": "શું આ સાચું છે?",
+  "qualityBlur": "ફોટો ઝાંખો છે. કૃપા કરીને સ્થિર રહો.",
+  "qualityDark": "ખૂબ અંધારું છે. તેજ પ્રકાશ તરફ જાઓ.",
+  "qualityBacklight": "પ્રકાશ વસ્તુ પાછળ છે. પ્રકાશ તરફ મોં ફેરવો.",
+  "navCapture": "ફોટો પાડો",
+  "navCatalog": "મારા ઉત્પાદો",
+  "navEnquiries": "ઓર્ડર અને પૂછપરછ",
+  "priceFloor": "ઉચિત વેતન ન્યૂનતમ",
+  "priceSuggested": "સૂચવેલ ભાવ",
+  "priceStretch": "પ્રીમિયમ ભાવ",
+  "belowFloorWarning": "આ ભાવ નીચે તમે શ્રમ અને સામગ્રીમાં ખોટ કરો છો."
+}

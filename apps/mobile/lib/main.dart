@@ -7,6 +7,7 @@ import 'package:shilpsetu/core/localization/language_provider.dart';
 import 'package:shilpsetu/core/router/app_router.dart';
 import 'package:shilpsetu/core/theme/app_theme.dart';
 import 'package:shilpsetu/core/theme/tokens.dart';
+import 'package:shilpsetu/l10n/generated/app_localizations.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,6 +38,7 @@ class ShilpsetuApp extends ConsumerWidget {
       locale: langState.selectedLanguage.locale,
       supportedLocales: SupportedLocales.phase1,
       localizationsDelegates: const [
+        AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,

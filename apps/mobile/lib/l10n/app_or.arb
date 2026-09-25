@@ -1,0 +1,17 @@
+{
+  "@@locale": "or",
+  "appTitle": "ଶିଳ୍ପସେତୁ",
+  "capturePrompt": "ଆପଣ ଯାହା ତିଆରି କଲେ ଦେଖାନ୍ତୁ",
+  "recordPrompt": "ଏ ବିଷୟରେ ବୁଝାନ୍ତୁ",
+  "confirmPublish": "ଏହା ଠିକ ଅଛି କି?",
+  "qualityBlur": "ଫଟୋ ଅସ୍ପଷ୍ଟ ଅଛି। ଦୟାକରି ସ୍ଥିର ରୁହନ୍ତୁ।",
+  "qualityDark": "ବହୁତ ଅନ୍ଧାର। ଆଲୋ ଥିବା ଜାଗାକୁ ଯାନ୍ତୁ।",
+  "qualityBacklight": "ଆଲୋ ବସ୍ତୁ ପଛରେ ଅଛି। ଆଲୋ ଆଡ଼କୁ ମୁହଁ ଘୁଞ୍ଚାନ୍ତୁ।",
+  "navCapture": "ଫଟୋ ନିଅନ୍ତୁ",
+  "navCatalog": "ମୋ ଉତ୍ପାଦ",
+  "navEnquiries": "ଅର୍ଡ଼ର ଓ ଜିଜ୍ଞାସା",
+  "priceFloor": "ଉଚିତ ମଜୁରି ନ୍ୟୂନତମ",
+  "priceSuggested": "ପ୍ରସ୍ତାବିତ ମୂଲ୍ୟ",
+  "priceStretch": "ପ୍ରିମିୟମ ମୂଲ୍ୟ",
+  "belowFloorWarning": "ଏହି ମୂଲ୍ୟ ତଳେ ଆପଣ ଶ୍ରମ ଓ ସାମଗ୍ରୀରେ କ୍ଷତି ଭୋଗ କରିବେ।"
+}

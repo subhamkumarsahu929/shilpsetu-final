@@ -33,22 +33,6 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   String? _selectedCraft;
   String? _customError;
 
-  final List<String> _craftOptionsHindi = const [
-    'मिट्टी शिल्प',
-    'हथकरघा बुनाई',
-    'ढोकरा धातु',
-    'काष्ठ शिल्प',
-    'पारंपरिक चित्रकला',
-  ];
-
-  final List<String> _craftOptionsEnglish = const [
-    'Terracotta Clay',
-    'Handloom Weaving',
-    'Dhokra Metal',
-    'Woodcraft',
-    'Traditional Painting',
-  ];
-
   @override
   void initState() {
     super.initState();
@@ -88,19 +72,16 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     });
 
     final controller = ref.read(authControllerProvider.notifier);
-    final lang = ref.read(languageProvider).selectedLanguage;
-    final isEnglish = lang == AppLanguage.english;
+    final langState = ref.read(languageProvider);
+    final strings = langState.strings;
     final name = _nameController.text.trim();
     final phone = _phoneController.text.trim();
 
-    final craftList =
-        isEnglish ? _craftOptionsEnglish : _craftOptionsHindi;
+    final craftList = strings.craftOptions;
     final activeCraft = _selectedCraft ?? craftList.first;
 
     if (_isRegisterMode && name.length < 2) {
-      final err = isEnglish
-          ? 'Please enter a valid full name (minimum 2 letters)'
-          : 'कृपया सही नाम दर्ज करें (कम से कम 2 अक्षर)';
+      final err = strings.nameError;
       setState(() => _customError = err);
       unawaited(_speakPrompt(err));
       return;
@@ -108,9 +89,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
     final cleanPhone = phone.replaceAll(RegExp(r'\D'), '');
     if (cleanPhone.length != 10 || !RegExp(r'^[6-9]\d{9}$').hasMatch(cleanPhone)) {
-      final err = isEnglish
-          ? 'Please enter a valid 10-digit mobile number'
-          : 'कृपया 10 अंकों का वैध मोबाइल नंबर दर्ज करें';
+      final err = strings.phoneError;
       setState(() => _customError = err);
       unawaited(_speakPrompt(err));
       return;
@@ -135,10 +114,8 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     if (success) {
       final userName = name.isNotEmpty
           ? name
-          : (isEnglish ? 'Artisan' : 'कारीगर जी');
-      final welcomeMsg = isEnglish
-          ? 'Welcome $userName to Shilpsetu!'
-          : 'नमस्ते $userName! शिल्पसेतु में आपका स्वागत है।';
+          : strings.artisanFallback;
+      final welcomeMsg = strings.welcomeUser(userName);
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -176,50 +153,21 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authControllerProvider);
-    final lang = ref.watch(languageProvider).selectedLanguage;
-    final isEnglish = lang == AppLanguage.english;
+    final langState = ref.watch(languageProvider);
+    final lang = langState.selectedLanguage;
+    final strings = langState.strings;
 
-    final craftOptions =
-        isEnglish ? _craftOptionsEnglish : _craftOptionsHindi;
+    final craftOptions = strings.craftOptions;
     final activeCraft = _selectedCraft ?? craftOptions.first;
 
-    final displayedError = _customError ??
-        (authState.errorMessage != null
-            ? (isEnglish
-                ? 'Please check your name and 10-digit mobile number'
-                : authState.errorMessage)
-            : null);
+    final displayedError = _customError ?? authState.errorMessage;
 
     return Scaffold(
       backgroundColor: Palette.surface,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Palette.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.account_balance_rounded,
-                color: Palette.primary,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              isEnglish ? 'Shilpsetu' : 'शिल्पसेतु',
-              style: const TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 20,
-                color: Palette.ink,
-              ),
-            ),
-          ],
-        ),
+        title: ShilpsetuBrandLogo(language: lang),
         actions: [
           // Language switcher pill
           TextButton.icon(
@@ -244,17 +192,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               foregroundColor: Palette.goldAccent,
             ),
             onPressed: () {
-              unawaited(
-                _speakPrompt(
-                  isEnglish
-                      ? (_isRegisterMode
-                          ? 'Please enter your full name and 10-digit mobile number to join Shilpsetu.'
-                          : 'Please enter your 10-digit mobile number to log in.')
-                      : (_isRegisterMode
-                          ? 'शिल्पसेतु में शामिल होने के लिए कृपया अपना नाम और दस अंकों का मोबाइल नंबर दर्ज करें।'
-                          : 'लॉग इन करने के लिए अपना दस अंकों का मोबाइल नंबर दर्ज करें।'),
-                ),
-              );
+              unawaited(_speakPrompt(strings.authPromptSpeech(_isRegisterMode)));
             },
           ),
           const SizedBox(width: 12),
@@ -270,23 +208,13 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
               children: [
                 // Zero-Literacy Prompt Banner
                 ZeroLiteracyPromptCard(
-                  promptText: isEnglish
-                      ? (_isRegisterMode
-                          ? 'Enter your name and mobile number'
-                          : 'Enter your registered mobile number')
-                      : (_isRegisterMode
-                          ? 'अपना नाम और मोबाइल नंबर दर्ज करें'
-                          : 'अपना पंजीकृत मोबाइल नंबर दर्ज करें'),
+                  promptText: strings.authPrompt(_isRegisterMode),
                   icon: _isRegisterMode
                       ? Icons.person_add_alt_1_rounded
                       : Icons.login_rounded,
                   onReplayAudio: () {
                     unawaited(
-                      _speakPrompt(
-                        isEnglish
-                            ? 'Please enter your mobile number and name'
-                            : 'कृपया अपना नाम और मोबाइल नंबर दर्ज करें',
-                      ),
+                      _speakPrompt(strings.authPromptSpeech(_isRegisterMode)),
                     );
                   },
                 ),
@@ -335,7 +263,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  isEnglish ? 'Register' : 'नया पंजीकरण',
+                                  strings.registerTab,
                                   style: TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w800,
@@ -381,7 +309,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  isEnglish ? 'Login' : 'लॉग इन',
+                                  strings.loginTab,
                                   style: TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w800,
@@ -404,7 +332,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 // Name Input Field
                 if (_isRegisterMode) ...[
                   Text(
-                    isEnglish ? 'Full Name *' : 'कारीगर का पूरा नाम *',
+                    strings.fullNameLabel,
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
@@ -427,9 +355,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                         color: Palette.primary,
                         size: 28,
                       ),
-                      hintText: isEnglish
-                          ? 'e.g. Ram Kishore'
-                          : 'उदा. राम किशोर',
+                      hintText: strings.fullNameHint,
                       hintStyle: const TextStyle(
                         fontSize: 16,
                         color: Palette.muted,
@@ -467,7 +393,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
 
                 // Mobile Number Input Field
                 Text(
-                  isEnglish ? 'Mobile Number *' : 'मोबाइल नंबर *',
+                  strings.phoneLabel,
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
@@ -558,7 +484,7 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                 // Craft Selection
                 if (_isRegisterMode) ...[
                   Text(
-                    isEnglish ? 'Your Craft Specialty' : 'आपकी शिल्प विधा',
+                    strings.craftCategoryLabel,
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
@@ -649,13 +575,11 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                       ? Icons.check_circle_rounded
                       : Icons.arrow_forward_rounded,
                   label: authState.isLoading
-                      ? (isEnglish ? 'Verifying...' : 'सत्यापित कर रहे हैं...')
-                      : _isRegisterMode
-                          ? (isEnglish ? 'Get Started' : 'शुरू करें')
-                          : (isEnglish ? 'Log In' : 'लॉग इन करें'),
-                  subtitle: isEnglish
-                      ? 'Opens camera capture studio'
-                      : 'कैमरा स्टूडियो खुलेगा',
+                      ? '...'
+                      : (_isRegisterMode
+                          ? strings.joinShilpsetu
+                          : strings.loginButton),
+                  subtitle: strings.offlineSyncNotice,
                   backgroundColor: _isRegisterMode
                       ? Palette.affirm
                       : Palette.primary,

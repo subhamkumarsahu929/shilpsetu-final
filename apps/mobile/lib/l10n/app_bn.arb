@@ -1,0 +1,17 @@
+{
+  "@@locale": "bn",
+  "appTitle": "শিল্পসেতু",
+  "capturePrompt": "আপনি যা তৈরি করেছেন তা দেখান",
+  "recordPrompt": "এ সম্পর্কে বলুন",
+  "confirmPublish": "এটা কি ঠিক আছে?",
+  "qualityBlur": "ছবিটি ঝাপসা। অনুগ্রহ করে স্থির থাকুন।",
+  "qualityDark": "অনেক অন্ধকার। উজ্জ্বল আলোতে যান।",
+  "qualityBacklight": "আলো বস্তুর পেছনে। আলোর দিকে মুখ করুন।",
+  "navCapture": "ছবি তুলুন",
+  "navCatalog": "আমার পণ্য",
+  "navEnquiries": "অর্ডার ও জিজ্ঞাসা",
+  "priceFloor": "ন্যায্য মজুরির সর্বনিম্ন",
+  "priceSuggested": "প্রস্তাবিত মূল্য",
+  "priceStretch": "প্রিমিয়াম মূল্য",
+  "belowFloorWarning": "এই মূল্যের নিচে আপনি শ্রম ও উপকরণে ক্ষতি করছেন।"
+}

@@ -6,6 +6,7 @@ library;
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shilpsetu/core/api/shilpsetu_api_service.dart';
 import 'package:shilpsetu_api/shilpsetu_api.dart';
 
 /// Where the backend lives during development.
@@ -19,13 +20,17 @@ import 'package:shilpsetu_api/shilpsetu_api.dart';
 /// ```
 const String kApiBaseUrl = String.fromEnvironment(
   'SHILPSETU_API_BASE_URL',
-  defaultValue: 'http://10.0.2.2:8000',
+  defaultValue: 'https://snowiness-pushup-brewing.ngrok-free.dev',
 );
 
 final dioProvider = Provider<Dio>((ref) {
   return Dio(
     BaseOptions(
       baseUrl: kApiBaseUrl,
+      headers: {
+        'ngrok-skip-browser-warning': 'true',
+        'Accept': 'application/json',
+      },
       // Generous: an artisan on rural 4G is the design case, not an
       // engineer on office fibre.
       connectTimeout: const Duration(seconds: 20),
@@ -37,4 +42,11 @@ final dioProvider = Provider<Dio>((ref) {
 
 final apiProvider = Provider<ShilpsetuApi>((ref) {
   return ShilpsetuApi(ref.watch(dioProvider));
+});
+
+final shilpSetuApiServiceProvider = Provider<ShilpSetuApiService>((ref) {
+  return ShilpSetuApiService(
+    dio: ref.watch(dioProvider),
+    baseUrl: kApiBaseUrl,
+  );
 });

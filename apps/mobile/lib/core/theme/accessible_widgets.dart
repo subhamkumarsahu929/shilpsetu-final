@@ -1,23 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:shilpsetu/core/localization/language_provider.dart';
 import 'package:shilpsetu/core/theme/tokens.dart';
 
 /// The exact Shilpsetu brand logo as shown in reference:
 /// - Rounded dark blue badge with connecting node icon
-/// - "shilp" in dark ink text + "setu" in vibrant terracotta orange
+/// - "shilp" in dark ink text + "setu" in vibrant terracotta orange (in native script)
 class ShilpsetuBrandLogo extends StatelessWidget {
   const ShilpsetuBrandLogo({
     super.key,
+    this.language,
     this.isHindi = false,
     this.fontSize = 22,
     this.iconSize = 34,
   });
 
+  final AppLanguage? language;
   final bool isHindi;
   final double fontSize;
   final double iconSize;
 
   @override
   Widget build(BuildContext context) {
+    final shilpText = language?.brandShilp ?? (isHindi ? 'शिल्प' : 'shilp');
+    final setuText = language?.brandSetu ?? (isHindi ? 'सेतु' : 'setu');
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -53,39 +59,22 @@ class ShilpsetuBrandLogo extends StatelessWidget {
               fontWeight: FontWeight.w900,
               letterSpacing: -0.5,
             ),
-            children: isHindi
-                ? const [
-                    TextSpan(
-                      text: 'शिल्प',
-                      style: TextStyle(
-                        color: Palette.logoInk,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    TextSpan(
-                      text: 'सेतु',
-                      style: TextStyle(
-                        color: Palette.logoOrange,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ]
-                : const [
-                    TextSpan(
-                      text: 'shilp',
-                      style: TextStyle(
-                        color: Palette.logoInk,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    TextSpan(
-                      text: 'setu',
-                      style: TextStyle(
-                        color: Palette.logoOrange,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
+            children: [
+              TextSpan(
+                text: shilpText,
+                style: const TextStyle(
+                  color: Palette.logoInk,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              TextSpan(
+                text: setuText,
+                style: const TextStyle(
+                  color: Palette.logoOrange,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
           ),
         ),
       ],

@@ -1,0 +1,17 @@
+{
+  "@@locale": "mr",
+  "appTitle": "शिल्पसेतू",
+  "capturePrompt": "तुम्ही बनवलेले दाखवा",
+  "recordPrompt": "त्याबद्दल सांगा",
+  "confirmPublish": "हे बरोबर आहे का?",
+  "qualityBlur": "फोटो अस्पष्ट आहे. कृपया स्थिर ठेवा.",
+  "qualityDark": "खूप अंधार आहे. उजळ प्रकाशात जा.",
+  "qualityBacklight": "प्रकाश वस्तूच्या मागे आहे. प्रकाशाकडे तोंड करा.",
+  "navCapture": "फोटो काढा",
+  "navCatalog": "माझी उत्पादने",
+  "navEnquiries": "ऑर्डर आणि चौकशी",
+  "priceFloor": "उचित मजुरी किमान",
+  "priceSuggested": "सुचवलेली किंमत",
+  "priceStretch": "प्रीमियम किंमत",
+  "belowFloorWarning": "या किमतीपेक्षा कमी म्हणजे तुम्ही श्रम आणि साहित्यात तोटा सहन करत आहात."
+}

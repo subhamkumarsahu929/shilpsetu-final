@@ -15,8 +15,8 @@ class AppInfoIconButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final lang = ref.watch(languageProvider).selectedLanguage;
-    final isEnglish = lang == AppLanguage.english;
+    final langState = ref.watch(languageProvider);
+    final strings = langState.strings;
 
     return Container(
       margin: const EdgeInsets.only(right: 12),
@@ -26,7 +26,7 @@ class AppInfoIconButton extends ConsumerWidget {
           backgroundColor: Palette.primary.withValues(alpha: 0.1),
           foregroundColor: Palette.primary,
         ),
-        tooltip: isEnglish ? 'App Info & Account' : 'जानकारी और खाता',
+        tooltip: strings.appInfoTooltip,
         onPressed: () {
           showModalBottomSheet<void>(
             context: context,
@@ -84,8 +84,8 @@ class _AppInfoBottomSheetState extends ConsumerState<AppInfoBottomSheet> {
   }
 
   void _openAccountEditor() {
-    final lang = ref.read(languageProvider).selectedLanguage;
-    final isEnglish = lang == AppLanguage.english;
+    final langState = ref.read(languageProvider);
+    final strings = langState.strings;
     final authState = ref.read(authControllerProvider);
     final currentName = authState.currentUser?.name ?? '';
     final currentPhone = authState.currentUser?.phoneNumber ?? '';
@@ -132,7 +132,7 @@ class _AppInfoBottomSheetState extends ConsumerState<AppInfoBottomSheet> {
                         ),
                         const SizedBox(width: 12),
                         Text(
-                          isEnglish ? 'Account Details' : 'खाता विवरण',
+                          strings.accountDetailsTitle,
                           style: const TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w800,
@@ -148,7 +148,7 @@ class _AppInfoBottomSheetState extends ConsumerState<AppInfoBottomSheet> {
                     ),
                     const SizedBox(height: Sizes.gapMedium),
                     Text(
-                      isEnglish ? 'Full Name *' : 'कारीगर का पूरा नाम *',
+                      strings.fullNameLabel,
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
@@ -173,7 +173,7 @@ class _AppInfoBottomSheetState extends ConsumerState<AppInfoBottomSheet> {
                     ),
                     const SizedBox(height: Sizes.gapMedium),
                     Text(
-                      isEnglish ? 'Mobile Number *' : 'मोबाइल नंबर *',
+                      strings.phoneLabel,
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w800,
@@ -211,9 +211,7 @@ class _AppInfoBottomSheetState extends ConsumerState<AppInfoBottomSheet> {
                         if (newName.length < 2 ||
                             newPhone.length != 10 ||
                             !RegExp(r'^[6-9]\d{9}$').hasMatch(newPhone)) {
-                          final err = isEnglish
-                              ? 'Please enter a valid name and 10-digit mobile number'
-                              : 'कृपया सही नाम और 10 अंकों का मोबाइल नंबर दर्ज करें';
+                          final err = strings.phoneError;
                           unawaited(_speak(err));
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
@@ -231,18 +229,15 @@ class _AppInfoBottomSheetState extends ConsumerState<AppInfoBottomSheet> {
                         if (!context.mounted) return;
                         Navigator.pop(modalContext);
 
-                        final successMsg = isEnglish
-                            ? 'Account details updated successfully!'
-                            : 'खाता विवरण सफलतापूर्वक अपडेट हुआ!';
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             backgroundColor: Palette.affirm,
-                            content: Text(successMsg),
+                            content: Text(strings.accountDetailsTitle),
                           ),
                         );
                       },
                       icon: Icons.save_rounded,
-                      label: isEnglish ? 'Save Changes' : 'बदलाव सहेजें',
+                      label: strings.markCompleted,
                       backgroundColor: Palette.affirm,
                       isLarge: true,
                     ),
@@ -257,8 +252,8 @@ class _AppInfoBottomSheetState extends ConsumerState<AppInfoBottomSheet> {
   }
 
   void _openAboutDialog() {
-    final lang = ref.read(languageProvider).selectedLanguage;
-    final isEnglish = lang == AppLanguage.english;
+    final langState = ref.read(languageProvider);
+    final strings = langState.strings;
 
     showDialog<void>(
       context: context,
@@ -284,7 +279,7 @@ class _AppInfoBottomSheetState extends ConsumerState<AppInfoBottomSheet> {
               ),
               const SizedBox(width: 10),
               Text(
-                isEnglish ? 'About Shilpsetu' : 'शिल्पसेतु के बारे में',
+                strings.aboutTile,
                 style: const TextStyle(
                   fontWeight: FontWeight.w800,
                   fontSize: 20,
@@ -298,24 +293,11 @@ class _AppInfoBottomSheetState extends ConsumerState<AppInfoBottomSheet> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  isEnglish
-                      ? 'Shilpsetu is an AI-powered market on-ramp designed specifically for Indian craft artisans.'
-                      : 'शिल्पसेतु भारतीय शिल्पकारों और बुनकरों के लिए बनाया गया एक एआई-सक्षम बाज़ार सेतु है।',
+                  strings.aboutSubtitle,
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                     height: 1.35,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  isEnglish
-                      ? '• Voice-first zero-literacy cataloging\n• On-device studio camera enhancement\n• Fair wage protection against undercutting\n• Direct buyer order alerts in your native language'
-                      : '• आवाज़ से आसान उत्पाद सूचीकरण\n• फ़ोन पर ही स्टूडियो फिनिशिंग\n• उचित मजदूरी सुरक्षा\n• आपकी अपनी भाषा में खरीदारों के सीधे ऑर्डर',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    color: Palette.muted,
-                    height: 1.4,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -326,9 +308,9 @@ class _AppInfoBottomSheetState extends ConsumerState<AppInfoBottomSheet> {
                     color: Palette.surfaceContainer,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(
-                    isEnglish ? 'Version 1.0.0' : 'संस्करण 1.0.0',
-                    style: const TextStyle(
+                  child: const Text(
+                    'ShilpSetu v1.0.0',
+                    style: TextStyle(
                       fontWeight: FontWeight.w700,
                       color: Palette.ink,
                     ),
@@ -340,14 +322,7 @@ class _AppInfoBottomSheetState extends ConsumerState<AppInfoBottomSheet> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: Text(
-                isEnglish ? 'Close' : 'बंद करें',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: Palette.primary,
-                ),
-              ),
+              child: const Icon(Icons.close_rounded, color: Palette.primary),
             ),
           ],
         );
@@ -356,8 +331,8 @@ class _AppInfoBottomSheetState extends ConsumerState<AppInfoBottomSheet> {
   }
 
   void _confirmLogout() {
-    final lang = ref.read(languageProvider).selectedLanguage;
-    final isEnglish = lang == AppLanguage.english;
+    final langState = ref.read(languageProvider);
+    final strings = langState.strings;
 
     showDialog<void>(
       context: context,
@@ -368,29 +343,20 @@ class _AppInfoBottomSheetState extends ConsumerState<AppInfoBottomSheet> {
             borderRadius: BorderRadius.circular(Sizes.cardRadius),
           ),
           title: Text(
-            isEnglish ? 'Log Out?' : 'लॉग आउट करें?',
+            strings.logoutTile,
             style: const TextStyle(
               fontWeight: FontWeight.w800,
               fontSize: 20,
             ),
           ),
           content: Text(
-            isEnglish
-                ? 'Are you sure you want to log out of Shilpsetu?'
-                : 'क्या आप शिल्पसेतु से लॉग आउट करना चाहते हैं?',
+            strings.logoutConfirm,
             style: const TextStyle(fontSize: 16),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: Text(
-                isEnglish ? 'Cancel' : 'रद्द करें',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Palette.muted,
-                ),
-              ),
+              child: const Icon(Icons.close_rounded, color: Palette.muted),
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
@@ -404,7 +370,7 @@ class _AppInfoBottomSheetState extends ConsumerState<AppInfoBottomSheet> {
                 context.go('/language');
               },
               child: Text(
-                isEnglish ? 'Log Out' : 'लॉग आउट',
+                strings.logoutTile,
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
@@ -419,11 +385,11 @@ class _AppInfoBottomSheetState extends ConsumerState<AppInfoBottomSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final lang = ref.watch(languageProvider).selectedLanguage;
-    final isEnglish = lang == AppLanguage.english;
+    final langState = ref.watch(languageProvider);
+    final lang = langState.selectedLanguage;
+    final strings = langState.strings;
     final authState = ref.watch(authControllerProvider);
-    final artisanName = authState.currentUser?.name ??
-        (isEnglish ? 'Artisan Profile' : 'कारीगर प्रोफाइल');
+    final artisanName = authState.currentUser?.name ?? strings.accountDetailsTitle;
     final phoneNumber = authState.currentUser?.phoneNumber ?? '';
 
     return Container(
@@ -489,10 +455,8 @@ class _AppInfoBottomSheetState extends ConsumerState<AppInfoBottomSheet> {
             // 1. Account Option
             _buildMenuItem(
               icon: Icons.account_circle_rounded,
-              title: isEnglish ? 'Account Profile' : 'खाता प्रोफाइल',
-              subtitle: isEnglish
-                  ? 'Edit your name and mobile number'
-                  : 'अपना नाम और मोबाइल नंबर बदलें',
+              title: strings.accountDetailsTitle,
+              subtitle: strings.accountDetailsTitle,
               color: Palette.primary,
               onTap: () {
                 Navigator.pop(context);
@@ -505,7 +469,7 @@ class _AppInfoBottomSheetState extends ConsumerState<AppInfoBottomSheet> {
             // 2. Language Change Option
             _buildMenuItem(
               icon: Icons.translate_rounded,
-              title: isEnglish ? 'Change Language' : 'भाषा बदलें',
+              title: strings.changeLanguageTile,
               subtitle: '${lang.nameNative} (${lang.nameEnglish})',
               color: Palette.goldAccent,
               onTap: () {
@@ -519,10 +483,8 @@ class _AppInfoBottomSheetState extends ConsumerState<AppInfoBottomSheet> {
             // 3. About Page Option
             _buildMenuItem(
               icon: Icons.info_outline_rounded,
-              title: isEnglish ? 'About Shilpsetu' : 'ऐप के बारे में',
-              subtitle: isEnglish
-                  ? 'Mission, features, and version'
-                  : 'मिशन, सुविधाएं और संस्करण',
+              title: strings.aboutTile,
+              subtitle: strings.aboutSubtitle,
               color: Palette.terracotta,
               onTap: () {
                 Navigator.pop(context);
@@ -535,10 +497,8 @@ class _AppInfoBottomSheetState extends ConsumerState<AppInfoBottomSheet> {
             // 4. Logout Option
             _buildMenuItem(
               icon: Icons.logout_rounded,
-              title: isEnglish ? 'Log Out' : 'लॉग आउट',
-              subtitle: isEnglish
-                  ? 'Sign out from this phone'
-                  : 'इस फ़ोन से खाता बंद करें',
+              title: strings.logoutTile,
+              subtitle: strings.logoutConfirm,
               color: Palette.revise,
               onTap: _confirmLogout,
             ),

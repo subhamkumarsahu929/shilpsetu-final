@@ -108,7 +108,13 @@ abstract final class Timings {
 /// Supported locales.
 abstract final class SupportedLocales {
   static const List<Locale> phase1 = [
-    Locale('hi', 'IN'),
-    Locale('en', 'IN'),
+    Locale('hi', 'IN'), // Hindi
+    Locale('en', 'IN'), // English
+    Locale('bn', 'IN'), // Bengali
+    Locale('te', 'IN'), // Telugu
+    Locale('ta', 'IN'), // Tamil
+    Locale('or', 'IN'), // Odia
+    Locale('gu', 'IN'), // Gujarati
+    Locale('mr', 'IN'), // Marathi
   ];
 }

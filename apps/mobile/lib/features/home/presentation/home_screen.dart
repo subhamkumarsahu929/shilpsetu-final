@@ -97,18 +97,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final lang = ref.watch(languageProvider).selectedLanguage;
-    final isEnglish = lang == AppLanguage.english;
+    final langState = ref.watch(languageProvider);
+    final lang = langState.selectedLanguage;
+    final strings = langState.strings;
     final authState = ref.watch(authControllerProvider);
-    final artisanName = authState.currentUser?.name ??
-        (isEnglish ? 'Radha' : 'कारीगर जी');
+    final artisanName = authState.currentUser?.name ?? strings.artisanFallback;
 
     return Scaffold(
       backgroundColor: Palette.surface,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: ShilpsetuBrandLogo(isHindi: !isEnglish),
+        title: ShilpsetuBrandLogo(language: lang),
         actions: [
           // Language Switcher Badge
           TextButton(
@@ -131,17 +131,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
-                    isEnglish ? 'EN' : 'हिं',
+                    lang.scriptGlyph,
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w900,
-                      fontSize: 11,
+                      fontSize: 12,
                     ),
                   ),
                 ),
-                const SizedBox(width: 4),
+                const SizedBox(width: 6),
                 Text(
-                  isEnglish ? 'हिंदी' : 'EN',
+                  lang.nameNative,
                   style: const TextStyle(
                     color: Palette.ink,
                     fontWeight: FontWeight.w700,
@@ -158,14 +158,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               backgroundColor: Palette.goldAccentLight,
               foregroundColor: Palette.goldAccent,
             ),
-            tooltip: isEnglish ? 'Listen overview' : 'जानकारी सुनें',
+            tooltip: strings.homeOverviewTooltip,
             onPressed: () {
               unawaited(
                 _speakText(
                   cardId: 'header',
-                  text: isEnglish
-                      ? 'Namaste, $artisanName. What will you make today? Use your voice, check fair pricing, or recognize crafts.'
-                      : 'नमस्ते, $artisanName। आज आप क्या बनाएंगे? बोलकर उत्पाद जोड़ें, उचित मूल्य जानें या शिल्प पहचानें।',
+                  text: strings.homeOverviewSpeech(artisanName),
                 ),
               );
             },
@@ -183,11 +181,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Greeting Section (as seen in reference design)
+              // Greeting Section
               Text(
-                isEnglish
-                    ? 'Namaste, $artisanName'
-                    : 'नमस्ते, $artisanName',
+                strings.greeting(artisanName),
                 style: const TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.w900,
@@ -197,9 +193,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                isEnglish
-                    ? 'What will you make today?'
-                    : 'आज आप क्या बनाएंगे?',
+                strings.whatWillYouMake,
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w500,
@@ -211,23 +205,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
               // 1. Signature Purple Hero Card (Voice-First Cataloging)
               ShilpsetuPurpleCard(
-                tag: isEnglish
-                    ? 'VOICE-FIRST CATALOGING'
-                    : 'आवाज़ से उत्पाद सूचीकरण',
-                title: isEnglish ? 'Add your\ncraft' : 'अपना शिल्प\nजोड़ें',
-                subtitle: isEnglish
-                    ? "Speak your story. We'll shape the rest."
-                    : 'अपनी कहानी बोलें, बाकी हम तैयार करेंगे।',
-                buttonText: isEnglish
-                    ? 'Begin with your voice'
-                    : 'बोलकर शुरू करें',
+                tag: strings.voiceCatalogingTag,
+                title: strings.voiceCatalogingTitle,
+                subtitle: strings.voiceCatalogingSubtitle,
+                buttonText: strings.voiceCatalogingButton,
                 onTap: () => context.push('/cataloger'),
                 isSpeaking: _currentlySpeakingCardId == 'voice_card',
                 onSpeak: () => _speakText(
                   cardId: 'voice_card',
-                  text: isEnglish
-                      ? "Add your craft. Speak your story, we'll shape the rest."
-                      : 'अपना शिल्प जोड़ें। अपनी कहानी बोलें, बाकी विवरण हम तैयार करेंगे।',
+                  text: strings.voiceCatalogingSpeech,
                 ),
               ),
 
@@ -237,7 +223,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               Row(
                 children: [
                   Text(
-                    isEnglish ? 'SMART ARTISAN TOOLS' : 'स्मार्ट कारीगर टूल्स',
+                    strings.smartArtisanTools,
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w800,
@@ -258,26 +244,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
               // 2. Purple Container: Transparent Fair-Wage Pricing
               ShilpsetuPurpleCard(
-                tag: isEnglish
-                    ? '🛡️ GOVT MINIMUM WAGE BASE'
-                    : '🛡️ सरकारी न्यूनतम मजदूरी आधार',
-                title: isEnglish
-                    ? 'Fair Price\nCalculator'
-                    : 'उचित मूल्य\nकैलकुलेटर',
-                subtitle: isEnglish
-                    ? 'Know your true artisan worth. Never sell below fair wage.'
-                    : 'अपने श्रम का सही मूल्य जानें। कम में कभी न बेचें।',
-                buttonText:
-                    isEnglish ? 'Check Fair Price' : 'उचित मूल्य जानें',
+                tag: strings.priceCalculatorTag,
+                title: strings.priceCalculatorTitle,
+                subtitle: strings.priceCalculatorSubtitle,
+                buttonText: strings.priceCalculatorButton,
                 icon: Icons.balance_rounded,
                 tagIcon: Icons.currency_rupee_rounded,
                 onTap: () => context.push('/pricing'),
                 isSpeaking: _currentlySpeakingCardId == 'price_card',
                 onSpeak: () => _speakText(
                   cardId: 'price_card',
-                  text: isEnglish
-                      ? 'Fair Price Calculator. Know your true worth, based on government minimum wage.'
-                      : 'उचित मूल्य कैलकुलेटर। अपने श्रम का सही मूल्य जानें।',
+                  text: strings.priceCalculatorSpeech,
                 ),
               ),
 
@@ -285,25 +262,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
               // 3. Purple Container: On-Device Craft Recognition
               ShilpsetuPurpleCard(
-                tag: isEnglish
-                    ? '📶 100% OFFLINE RECOGNITION'
-                    : '📶 बिना इंटरनेट के काम करता है',
-                title: isEnglish
-                    ? 'Recognize\nYour Craft'
-                    : 'शिल्प\nपहचानें',
-                subtitle: isEnglish
-                    ? 'Take a photo, we identify craft techniques offline.'
-                    : 'फोटो खींचें, हम तकनीक और शिल्प बिना इंटरनेट के पहचानेंगे।',
-                buttonText: isEnglish ? 'Recognize Craft' : 'शिल्प पहचानें',
+                tag: strings.offlineRecogTag,
+                title: strings.offlineRecogTitle,
+                subtitle: strings.offlineRecogSubtitle,
+                buttonText: strings.offlineRecogButton,
                 icon: Icons.document_scanner_rounded,
                 tagIcon: Icons.camera_alt_rounded,
                 onTap: () => context.go('/capture'),
                 isSpeaking: _currentlySpeakingCardId == 'recog_card',
                 onSpeak: () => _speakText(
                   cardId: 'recog_card',
-                  text: isEnglish
-                      ? 'Recognize Your Craft. Take a photo, works 100% offline without internet.'
-                      : 'शिल्प पहचानें। फोटो खींचें, यह बिना इंटरनेट के काम करता है।',
+                  text: strings.offlineRecogSpeech,
                 ),
               ),
 
@@ -311,25 +280,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
               // 4. Purple Container: Photo Studio
               ShilpsetuPurpleCard(
-                tag: isEnglish
-                    ? '⚡ 320MS STUDIO FINISH'
-                    : '⚡ 320MS स्टूडियो फिनिश',
-                title: isEnglish
-                    ? 'Studio Photo\nEnhancer'
-                    : 'फ़ोटो स्टूडियो\nफिनिशर',
-                subtitle: isEnglish
-                    ? 'Turn simple home photos into clean marketplace listings.'
-                    : 'घर की साधारण फोटो को बनाएं बाज़ार जैसी साफ फ़ोटो।',
-                buttonText: isEnglish ? 'Open Studio' : 'स्टूडियो खोलें',
+                tag: strings.studioTag,
+                title: strings.studioTitle,
+                subtitle: strings.studioSubtitle,
+                buttonText: strings.studioButton,
                 icon: Icons.photo_filter_rounded,
                 tagIcon: Icons.auto_fix_high_rounded,
                 onTap: () => context.go('/capture'),
                 isSpeaking: _currentlySpeakingCardId == 'studio_card',
                 onSpeak: () => _speakText(
                   cardId: 'studio_card',
-                  text: isEnglish
-                      ? 'Studio Photo Enhancer. Turn home photos into clean marketplace listings in 320ms.'
-                      : 'फ़ोटो स्टूडियो। साधारण फोटो को बनाएं बाज़ार जैसी साफ फ़ोटो।',
+                  text: strings.studioSpeech,
                 ),
               ),
 

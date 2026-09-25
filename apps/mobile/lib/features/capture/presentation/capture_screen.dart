@@ -1,15 +1,17 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:go_router/go_router.dart';
-import 'package:image/image.dart' as img;
 import 'package:shilpsetu/core/localization/language_provider.dart';
 import 'package:shilpsetu/core/theme/accessible_widgets.dart';
 import 'package:shilpsetu/core/theme/tokens.dart';
+import 'package:shilpsetu/features/capture/domain/models/captured_craft.dart';
 import 'package:shilpsetu/features/capture/presentation/controllers/capture_controller.dart';
+import 'package:shilpsetu/features/catalog/domain/craft_flow_provider.dart';
 import 'package:shilpsetu/features/home/presentation/widgets/app_info_menu.dart';
 import 'package:shilpsetu/ml/models/quality_assessment.dart';
 
@@ -178,33 +180,61 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
     } catch (_) {}
   }
 
-  String _getQualityMessage(QualityIssue issue, bool isEnglish) {
+  String _getQualityMessage(QualityIssue issue) {
+    final lang = ref.read(languageProvider.notifier);
     switch (issue) {
       case QualityIssue.blur:
-        return isEnglish
-            ? 'Photo is blurry. Please hold steady.'
-            : 'फ़ोटो धुंधली है। कृपया हाथ स्थिर रखें।';
+        return lang.text(
+          en: 'Photo is blurry. Please hold steady.',
+          hi: 'फ़ोटो धुंधली है। कृपया हाथ स्थिर रखें।',
+          bn: 'ছবিটি ঝাপসা। অনুগ্রহ করে স্থির থাকুন।',
+          te: 'ఫోటో మసకగా ఉంది. దయచేసి స్థిరంగా పట్టుకోండి.',
+          ta: 'புகைப்படம் மங்கலாக உள்ளது. நிலையாக பிடிக்கவும்.',
+          or_: 'ଫଟୋ ଅସ୍ପଷ୍ଟ ଅଛି। ଦୟାକରି ସ୍ଥିର ରୁହନ୍ତୁ।',
+          gu: 'ફોટો ઝાંખો છે. કૃપા કરીને સ્થિર રહો.',
+          mr: 'फोटो अस्पष्ट आहे. कृपया स्थिर ठेवा.',
+        );
       case QualityIssue.tooDark:
-        return isEnglish
-            ? 'Too dark. Please move towards light.'
-            : 'बहुत अंधेरा है। कृपया रोशनी में जाएं।';
+        return lang.text(
+          en: 'Too dark. Please move towards light.',
+          hi: 'बहुत अंधेरा है। कृपया रोशनी में जाएं।',
+          bn: 'অনেক অন্ধকার। উজ্জ্বল আলোতে যান।',
+          te: 'చాలా చీకటిగా ఉంది. వెలుతురులోకి వెళ్ళండి.',
+          ta: 'மிகவும் இருட்டாக உள்ளது. வெளிச்சத்திற்கு செல்லுங்கள்.',
+          or_: 'ବହୁତ ଅନ୍ଧାର। ଆଲୋ ଥିବା ଜାଗାକୁ ଯାନ୍ତୁ।',
+          gu: 'ખૂબ અંધારું છે. તેજ પ્રકાશ તરફ જાઓ.',
+          mr: 'खूप अंधार आहे. उजळ प्रकाशात जा.',
+        );
       case QualityIssue.backlight:
-        return isEnglish
-            ? 'Backlight detected. Face towards light.'
-            : 'रोशनी वस्तु के पीछे है। रोशनी की ओर मुख करें।';
+        return lang.text(
+          en: 'Backlight detected. Face towards light.',
+          hi: 'रोशनी वस्तु के पीछे है। रोशनी की ओर मुख करें।',
+          bn: 'আলো বস্তুর পেছনে। আলোর দিকে মুখ করুন।',
+          te: 'వెలుతురు వస్తువు వెనకాల ఉంది. వెలుతురు వైపు మొహం పెట్టండి.',
+          ta: 'வெளிச்சம் பொருளின் பின்னால் உள்ளது. திரும்புங்கள்.',
+          or_: 'ଆଲୋ ବସ୍ତୁ ପଛରେ ଅଛି। ଆଲୋ ଆଡ଼କୁ ମୁହଁ ଘୁଞ୍ଚାନ୍ତୁ।',
+          gu: 'પ્રકાશ વસ્તુ પાછળ છે. પ્રકાશ તરફ મોં ફેરવો.',
+          mr: 'प्रकाश वस्तूच्या मागे आहे. प्रकाशाकडे तोंड करा.',
+        );
       case QualityIssue.none:
-        return isEnglish ? 'Ready to capture' : 'फ़ोटो लेने के लिए तैयार';
+        return lang.text(
+          en: 'Ready to capture',
+          hi: 'फ़ोटो लेने के लिए तैयार',
+          bn: 'ছবি তোলার জন্য প্রস্তুত',
+          te: 'ఫోటో తీయడానికి సిద్ధం',
+          ta: 'புகைப்படம் எடுக்க தயார்',
+          or_: 'ଫଟୋ ନେବାକୁ ପ୍ରସ୍ତୁତ',
+          gu: 'ફોટો પાડવા તૈયાર',
+          mr: 'फोटो काढण्यास तयार',
+        );
     }
   }
 
   void _handleQualityAlert(QualityAssessment quality) {
-    final isEnglish =
-        ref.read(languageProvider).selectedLanguage == AppLanguage.english;
-
     if (!quality.isAcceptable && quality.issue != QualityIssue.none) {
       if (_lastSpokenIssue != quality.issue) {
         _lastSpokenIssue = quality.issue;
-        final msg = _getQualityMessage(quality.issue, isEnglish);
+        final msg = _getQualityMessage(quality.issue);
         unawaited(_speakPrompt(msg));
       }
     } else {
@@ -230,26 +260,26 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
       }
     }
 
-    // 2. Synthesize high-quality craft sample if hardware camera is absent (desktop/test)
+    // 2. Reject capture if no real camera frame was received (no hardcoded/synthetic fallback)
     if (rawBytes == null) {
-      final demoImage = img.Image(width: 480, height: 480);
-      img.fill(demoImage, color: img.ColorRgb8(245, 240, 230));
-      img.fillCircle(
-        demoImage,
-        x: 240,
-        y: 240,
-        radius: 140,
-        color: img.ColorRgb8(181, 77, 43),
-      );
-      img.drawCircle(
-        demoImage,
-        x: 240,
-        y: 240,
-        radius: 100,
-        color: img.ColorRgb8(30, 47, 93),
-      );
-      rawBytes =
-          Uint8List.fromList(img.encodeJpg(demoImage, quality: 90));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Palette.revise,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(Sizes.radius),
+            ),
+            content: Text(
+              isEnglish
+                  ? 'Camera capture failed: no frame data received. Please ensure camera is active.'
+                  : 'कैमरा से फोटो नहीं मिल सकी। कृपया पुनः प्रयास करें।',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        );
+      }
+      return;
     }
 
     final craft = await controller.captureAndProcess(rawBytes);
@@ -257,44 +287,170 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
     if (!mounted) return;
 
     if (craft != null) {
-      final successMsg = isEnglish
-          ? 'Photo captured & studio enhanced!'
-          : 'फोटो तैयार! स्टूडियो फिनिश के साथ';
+      // Step 1: Register background-removed photo with the CraftFlow state
+      await ref.read(craftFlowProvider.notifier).setProcessedImage(
+        localPath: craft.localProcessedPath,
+        rawImagePath: craft.rawImagePath,
+      );
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          backgroundColor: Palette.affirm,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Sizes.radius),
+      if (!mounted) return;
+
+      // Show background-removed preview modal directly in the app
+      await _showBackgroundRemovedPreview(craft);
+    }
+  }
+
+  /// Step 1: Displays the background-removed image in the app so the artisan can verify the model worked
+  Future<void> _showBackgroundRemovedPreview(CapturedCraft craft) async {
+    final lang = ref.read(languageProvider).selectedLanguage;
+    final isEnglish = lang == AppLanguage.english;
+
+    final spokenPrompt = isEnglish
+        ? 'Photo captured and background removed. Let us create your craft description.'
+        : 'फोटो ले ली गई है और एआई मॉडल ने बैकग्राउंड हटा दिया है। आइए अब विवरण तैयार करते हैं।';
+
+    unawaited(_speakPrompt(spokenPrompt));
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
           ),
-          duration: const Duration(seconds: 3),
-          content: Row(
+          padding: const EdgeInsets.fromLTRB(Sizes.gutter, 16, Sizes.gutter, 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(
-                Icons.check_circle_rounded,
-                color: Colors.white,
-                size: 26,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  successMsg,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 16,
+              Center(
+                child: Container(
+                  width: 48,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: Palette.surfaceContainerHigh,
+                    borderRadius: BorderRadius.circular(10),
                   ),
                 ),
               ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.auto_fix_high_rounded,
+                    color: Palette.affirm,
+                    size: 28,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      isEnglish ? 'Background Removed' : 'बैकग्राउंड हटाया गया',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        color: Palette.ink,
+                      ),
+                    ),
+                  ),
+                  TripleChannelStatusBadge(
+                    label: isEnglish ? 'Studio Ready' : 'स्टूडियो तैयार',
+                    icon: Icons.check_circle_rounded,
+                    color: Palette.affirm,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Segmented craft preview
+              Container(
+                height: 240,
+                decoration: BoxDecoration(
+                  color: Palette.surface,
+                  borderRadius: BorderRadius.circular(Sizes.cardRadius),
+                  border: Border.all(
+                    color: Palette.affirm.withValues(alpha: 0.3),
+                    width: 2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Palette.ink.withValues(alpha: 0.08),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    Image.file(
+                      File(craft.localProcessedPath),
+                      fit: BoxFit.contain,
+                      width: double.infinity,
+                      height: double.infinity,
+                    ),
+                    Positioned(
+                      bottom: 10,
+                      left: 10,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          isEnglish
+                              ? 'Model isolated in ${craft.processingDurationMs}ms'
+                              : '${craft.processingDurationMs}ms में बैकग्राउंड अलग किया',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 20),
+              // Continue to Step 2
+              SpokenActionButton(
+                onPressed: () {
+                  Navigator.of(ctx).pop();
+                  context.push('/cataloger');
+                },
+                icon: Icons.auto_awesome_rounded,
+                label: isEnglish ? 'Next: Describe Craft' : 'आगे: विवरण तैयार करें',
+                subtitle: isEnglish
+                    ? 'Choose photo-only or photo with voice'
+                    : 'केवल फोटो या आवाज़ जोड़कर विवरण चुनें',
+                backgroundColor: Palette.amberButton,
+                foregroundColor: Palette.ink,
+                isLarge: true,
+              ),
+              const SizedBox(height: 10),
+              OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  minimumSize: const Size(double.infinity, Sizes.minTouchTarget),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(Sizes.radius),
+                  ),
+                ),
+                icon: const Icon(Icons.refresh_rounded),
+                label: Text(
+                  isEnglish ? 'Retake Photo' : 'दोबारा फोटो लें',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                onPressed: () => Navigator.of(ctx).pop(),
+              ),
             ],
           ),
-        ),
-      );
-
-      if (mounted) {
-        unawaited(context.push('/cataloger'));
-      }
-    }
+        );
+      },
+    );
   }
 
   @override
@@ -308,8 +464,9 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
   @override
   Widget build(BuildContext context) {
     final captureState = ref.watch(captureControllerProvider);
-    final lang = ref.watch(languageProvider).selectedLanguage;
-    final isEnglish = lang == AppLanguage.english;
+    final langState = ref.watch(languageProvider);
+    final lang = langState.selectedLanguage;
+    final strings = langState.strings;
     final quality = captureState.quality;
 
     ref.listen<CaptureState>(captureControllerProvider, (prev, next) {
@@ -319,14 +476,14 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
     });
 
     final hasWarning = !quality.isAcceptable;
-    final qualityMsg = _getQualityMessage(quality.issue, isEnglish);
+    final qualityMsg = _getQualityMessage(quality.issue);
     final isCameraActive =
         _cameraController != null && _cameraController!.value.isInitialized;
 
     return Scaffold(
       backgroundColor: Palette.surface,
       appBar: AppBar(
-        title: ShilpsetuBrandLogo(isHindi: !isEnglish),
+        title: ShilpsetuBrandLogo(language: lang),
         backgroundColor: Colors.white,
         elevation: 0,
         actions: [
@@ -341,15 +498,9 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
               backgroundColor: Palette.goldAccentLight,
               foregroundColor: Palette.goldAccent,
             ),
-            tooltip: isEnglish ? 'Listen instructions' : 'निर्देश सुनें',
+            tooltip: strings.captureInstructionsTooltip,
             onPressed: () {
-              unawaited(
-                _speakPrompt(
-                  isEnglish
-                      ? 'Show what you made. Center the craft in the frame and tap the camera button to take a photo.'
-                      : 'आपने जो बनाया है वह दिखाइए। वस्तु को फ्रेम के बीच में रखें और फोटो लेने के लिए कैमरा बटन दबाएं।',
-                ),
-              );
+              unawaited(_speakPrompt(strings.captureInstructionsSpeech));
             },
           ),
           const SizedBox(width: 6),
@@ -366,18 +517,10 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
                 vertical: Sizes.gapSmall,
               ),
               child: ZeroLiteracyPromptCard(
-                promptText: isEnglish
-                    ? 'Show what you made'
-                    : 'आपने जो बनाया है वह दिखाइए',
+                promptText: strings.capturePrompt,
                 icon: Icons.camera_alt_rounded,
                 onReplayAudio: () {
-                  unawaited(
-                    _speakPrompt(
-                      isEnglish
-                          ? 'Show what you made. Center the craft in the frame and tap the camera button.'
-                          : 'आपने जो बनाया है वह दिखाइए। वस्तु को फ्रेम के बीच में रखें और कैमरा बटन दबाएं।',
-                    ),
-                  );
+                  unawaited(_speakPrompt(strings.capturePromptReplay));
                 },
               ),
             ),
@@ -446,9 +589,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
                                 ),
                                 const SizedBox(height: 12),
                                 Text(
-                                  isEnglish
-                                      ? 'Point camera at your craft'
-                                      : 'कैमरे को अपने शिल्प की ओर रखें',
+                                  strings.pointCamera,
                                   style: const TextStyle(
                                     color: Colors.white70,
                                     fontSize: 16,
@@ -519,9 +660,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
                               ),
                             ),
                             child: Text(
-                              isEnglish
-                                  ? 'Center craft in frame'
-                                  : 'वस्तु को फ्रेम के बीच में रखें',
+                              strings.pointCamera,
                               textAlign: TextAlign.center,
                               style: const TextStyle(
                                 color: Colors.white,
@@ -614,13 +753,11 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen>
                                 ),
                                 const SizedBox(height: Sizes.gapMedium),
                                 Text(
-                                  isEnglish
-                                      ? 'Enhancing craft photo...'
-                                      : 'फोटो सुंदर बनाई जा रही है...',
+                                  strings.offlineMlActive,
                                   textAlign: TextAlign.center,
                                   style: const TextStyle(
                                     color: Colors.white,
-                                    fontSize: 18,
+                                    fontSize: 18,  
                                     fontWeight: FontWeight.w800,
                                   ),
                                 ),

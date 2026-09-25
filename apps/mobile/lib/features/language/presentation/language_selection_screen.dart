@@ -38,10 +38,30 @@ class _LanguageSelectionScreenState
     try {
       await _tts.setSpeechRate(0.45);
       await _tts.setPitch(1);
+      _tts
+        ..setCompletionHandler(() {
+          if (mounted) setState(() => _currentlySpeakingCode = null);
+        })
+        ..setCancelHandler(() {
+          if (mounted) setState(() => _currentlySpeakingCode = null);
+        })
+        ..setErrorHandler((_) {
+          if (mounted) setState(() => _currentlySpeakingCode = null);
+        });
     } catch (_) {}
   }
 
   Future<void> _speakLanguageGreeting(AppLanguage language) async {
+    if (_currentlySpeakingCode == language.code) {
+      try {
+        await _tts.stop();
+      } catch (_) {}
+      if (mounted) {
+        setState(() => _currentlySpeakingCode = null);
+      }
+      return;
+    }
+
     setState(() {
       _currentlySpeakingCode = language.code;
     });
@@ -51,11 +71,8 @@ class _LanguageSelectionScreenState
       await _tts.setLanguage(language.ttsLocale);
       await _tts.speak(language.greeting);
     } catch (_) {
-    } finally {
       if (mounted) {
-        setState(() {
-          _currentlySpeakingCode = null;
-        });
+        setState(() => _currentlySpeakingCode = null);
       }
     }
   }
@@ -88,32 +105,7 @@ class _LanguageSelectionScreenState
         backgroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Palette.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(
-                Icons.translate_rounded,
-                color: Palette.primary,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              _selected == AppLanguage.english ? 'Shilpsetu' : 'शिल्पसेतु',
-              style: const TextStyle(
-                fontWeight: FontWeight.w800,
-                fontSize: 20,
-                color: Palette.ink,
-              ),
-            ),
-          ],
-        ),
+        title: ShilpsetuBrandLogo(language: _selected),
       ),
       body: SafeArea(
         child: Column(
@@ -122,9 +114,7 @@ class _LanguageSelectionScreenState
             Padding(
               padding: const EdgeInsets.all(Sizes.gutter),
               child: ZeroLiteracyPromptCard(
-                promptText: _selected == AppLanguage.english
-                    ? 'Choose your preferred language'
-                    : 'अपनी भाषा चुनें',
+                promptText: _selected.strings.chooseLanguagePrompt,
                 icon: Icons.record_voice_over_rounded,
                 onReplayAudio: () {
                   unawaited(_speakLanguageGreeting(_selected));
@@ -285,12 +275,8 @@ class _LanguageSelectionScreenState
               child: SpokenActionButton(
                 onPressed: _confirmLanguage,
                 icon: Icons.check_circle_rounded,
-                label: _selected == AppLanguage.english
-                    ? 'Continue in English'
-                    : '${_selected.nameNative} में जारी रखें',
-                subtitle: _selected == AppLanguage.english
-                    ? 'Tap to continue with English'
-                    : '${_selected.nameNative} में आगे बढ़ें',
+                label: '${_selected.strings.continueButton} (${_selected.nameNative})',
+                subtitle: _selected.strings.setupProfile,
                 backgroundColor: Palette.affirm,
                 isLarge: true,
               ),

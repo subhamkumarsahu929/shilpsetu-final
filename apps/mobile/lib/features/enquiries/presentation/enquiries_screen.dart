@@ -99,19 +99,16 @@ class _EnquiriesScreenState extends ConsumerState<EnquiriesScreen> {
         .read(enquiriesControllerProvider.notifier)
         .setActivePlaying(enquiry.id);
 
-    final lang = ref.read(languageProvider).selectedLanguage;
-    final isEnglish = lang == AppLanguage.english;
+    final langState = ref.read(languageProvider);
+    final lang = langState.selectedLanguage;
+    final strings = langState.strings;
 
     final pricePart = enquiry.offeredPrice != null &&
             enquiry.offeredPrice!.isNotEmpty
-        ? (isEnglish
-            ? ' Offered price: ${enquiry.offeredPrice!}.'
-            : ' प्रस्तावित मूल्य: ${enquiry.offeredPrice!}।')
+        ? ' ${strings.buyerOfferedPrice}: ${enquiry.offeredPrice!}.'
         : '';
 
-    final speech = isEnglish
-        ? 'Buyer ${enquiry.buyerName} says: ${enquiry.messageText}.$pricePart'
-        : 'खरीदार ${enquiry.buyerName} ने कहा है: ${enquiry.messageText}।$pricePart';
+    final speech = '${enquiry.buyerName}: ${enquiry.messageText}.$pricePart';
 
     try {
       await _tts.stop();
@@ -145,26 +142,21 @@ class _EnquiriesScreenState extends ConsumerState<EnquiriesScreen> {
         .read(enquiriesControllerProvider.notifier)
         .setActivePlaying(headerId);
 
-    final lang = ref.read(languageProvider).selectedLanguage;
-    final isEnglish = lang == AppLanguage.english;
+    final langState = ref.read(languageProvider);
+    final lang = langState.selectedLanguage;
+    final strings = langState.strings;
 
     final String text;
     if (enquiries.isEmpty) {
-      text = isEnglish
-          ? 'You have no new buyer messages right now.'
-          : 'अभी आपके पास कोई नया संदेश नहीं है।';
+      text = strings.noOrdersTitle;
     } else {
       final unreadCount = enquiries.where((e) => e.isUnread).length;
       if (unreadCount > 0) {
         final firstUnread = enquiries.firstWhere((e) => e.isUnread);
-        text = isEnglish
-            ? 'You have $unreadCount new buyer messages. Latest from ${firstUnread.buyerName}: ${firstUnread.messageText}.'
-            : 'आपके पास $unreadCount नए संदेश हैं। ${firstUnread.buyerName} ने पूछा है: ${firstUnread.messageText}।';
+        text = '${firstUnread.buyerName}: ${firstUnread.messageText}';
       } else {
         final first = enquiries.first;
-        text = isEnglish
-            ? 'You have ${enquiries.length} total orders. Message from ${first.buyerName}: ${first.messageText}.'
-            : 'आपके पास कुल ${enquiries.length} संदेश हैं। ${first.buyerName} का संदेश: ${first.messageText}।';
+        text = '${first.buyerName}: ${first.messageText}';
       }
     }
 
@@ -190,14 +182,15 @@ class _EnquiriesScreenState extends ConsumerState<EnquiriesScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(enquiriesControllerProvider);
-    final lang = ref.watch(languageProvider).selectedLanguage;
-    final isEnglish = lang == AppLanguage.english;
+    final langState = ref.watch(languageProvider);
+    final lang = langState.selectedLanguage;
+    final strings = langState.strings;
     final isHeaderPlaying = _localPlayingId == 'header_card';
 
     return Scaffold(
       backgroundColor: Palette.surface,
       appBar: AppBar(
-        title: ShilpsetuBrandLogo(isHindi: !isEnglish),
+        title: ShilpsetuBrandLogo(language: lang),
         backgroundColor: Colors.white,
         elevation: 0,
         actions: [
@@ -226,9 +219,7 @@ class _EnquiriesScreenState extends ConsumerState<EnquiriesScreen> {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    isEnglish
-                        ? '${state.unreadCount} New'
-                        : '${state.unreadCount} नए',
+                    '${state.unreadCount} ${strings.filterPending}',
                     style: const TextStyle(
                       color: Palette.ink,
                       fontWeight: FontWeight.w900,
@@ -249,18 +240,12 @@ class _EnquiriesScreenState extends ConsumerState<EnquiriesScreen> {
             children: [
               // Signature Purple Hero Banner
               ShilpsetuPurpleCard(
-                tag: isEnglish ? 'BUYER CONNECT' : 'खरीदार संदेश',
-                title: isEnglish
-                    ? 'Direct Buyer\nOrders'
-                    : 'सीधे खरीदार\nऑर्डर',
-                subtitle: isEnglish
-                    ? 'Listen to incoming purchase enquiries and accept buyer offers.'
-                    : 'नए संदेश सुनें और सीधे खरीदारों के ऑर्डर स्वीकार करें।',
+                tag: strings.ordersPrompt,
+                title: strings.ordersPrompt,
+                subtitle: strings.noOrdersSubtitle,
                 buttonText: isHeaderPlaying
-                    ? (isEnglish ? 'Stop Audio' : 'आवाज़ रोकें')
-                    : (isEnglish
-                        ? 'Listen All Messages'
-                        : 'सभी संदेश सुनें'),
+                    ? strings.capturePromptReplay
+                    : strings.ordersPrompt,
                 icon: Icons.mark_chat_unread_rounded,
                 tagIcon: Icons.shopping_bag_rounded,
                 onTap: () => _speakAllMessages(state.enquiries),
@@ -274,7 +259,7 @@ class _EnquiriesScreenState extends ConsumerState<EnquiriesScreen> {
               Row(
                 children: [
                   Text(
-                    isEnglish ? 'INCOMING INTEREST' : 'आए हुए संदेश और ऑर्डर',
+                    strings.filterAllOrders,
                     style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w800,
@@ -291,9 +276,7 @@ class _EnquiriesScreenState extends ConsumerState<EnquiriesScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
-                      isEnglish
-                          ? '${state.enquiries.length} Enquiries'
-                          : '${state.enquiries.length} संदेश',
+                      '${state.enquiries.length} ${strings.filterAllOrders}',
                       style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
@@ -338,9 +321,7 @@ class _EnquiriesScreenState extends ConsumerState<EnquiriesScreen> {
                         ),
                         const SizedBox(height: Sizes.gapMedium),
                         Text(
-                          isEnglish
-                              ? 'No new messages yet\nIncoming buyer alerts will appear here'
-                              : 'अभी कोई नया संदेश नहीं है\nखरीदार के संदेश यहाँ दिखेंगे',
+                          '${strings.noOrdersTitle}\n${strings.noOrdersSubtitle}',
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             fontSize: Sizes.minBodyText,
@@ -430,9 +411,7 @@ class _EnquiriesScreenState extends ConsumerState<EnquiriesScreen> {
                                       if (enquiry.productTitle !=
                                           null)
                                         Text(
-                                          isEnglish
-                                              ? 'Product: ${enquiry.productTitle!}'
-                                              : 'उत्पाद: ${enquiry.productTitle!}',
+                                          enquiry.productTitle!,
                                           style: const TextStyle(
                                             fontSize: 14,
                                             color: Palette.muted,
@@ -445,15 +424,13 @@ class _EnquiriesScreenState extends ConsumerState<EnquiriesScreen> {
                                 if (enquiry.status ==
                                     EnquiryStatus.accepted)
                                   TripleChannelStatusBadge(
-                                    label: isEnglish
-                                        ? 'Accepted'
-                                        : 'स्वीकृत',
+                                    label: strings.filterConfirmed,
                                     icon: Icons.check_circle_rounded,
                                     color: Palette.affirm,
                                   )
                                 else if (enquiry.isUnread)
                                   TripleChannelStatusBadge(
-                                    label: isEnglish ? 'New' : 'नया',
+                                    label: strings.filterPending,
                                     icon: Icons.fiber_new_rounded,
                                     color: Palette.purpleContainerDark,
                                   ),
@@ -520,12 +497,8 @@ class _EnquiriesScreenState extends ConsumerState<EnquiriesScreen> {
                                           ),
                                     label: Text(
                                       isPlaying
-                                          ? (isEnglish
-                                              ? 'Stop (Playing...)'
-                                              : 'रोकें (चल रहा है)')
-                                          : (isEnglish
-                                              ? 'Listen Message'
-                                              : 'संदेश सुनें'),
+                                          ? strings.capturePromptReplay
+                                          : strings.ordersPrompt,
                                       style: const TextStyle(
                                         fontSize: 15,
                                         fontWeight: FontWeight.w800,
@@ -563,9 +536,7 @@ class _EnquiriesScreenState extends ConsumerState<EnquiriesScreen> {
                                       color: Palette.ink,
                                     ),
                                     label: Text(
-                                      isEnglish
-                                          ? 'Accept'
-                                          : 'स्वीकार करें',
+                                      strings.markCompleted,
                                       textAlign: TextAlign.center,
                                       style: const TextStyle(
                                         fontSize: 15,
@@ -579,9 +550,6 @@ class _EnquiriesScreenState extends ConsumerState<EnquiriesScreen> {
                                                 .notifier,
                                           )
                                           .accept(enquiry.id);
-                                      final acceptMsg = isEnglish
-                                          ? 'Order accepted! Notification sent to buyer.'
-                                          : 'ऑर्डर स्वीकार किया गया! खरीदार को सूचना भेजी गई।';
                                       ScaffoldMessenger.of(
                                         context,
                                       ).showSnackBar(
@@ -589,7 +557,7 @@ class _EnquiriesScreenState extends ConsumerState<EnquiriesScreen> {
                                           backgroundColor:
                                               Palette.affirm,
                                           content: Text(
-                                            acceptMsg,
+                                            strings.markCompleted,
                                             style: const TextStyle(
                                               fontSize: 16,
                                               fontWeight:

@@ -97,8 +97,7 @@ class _ScaffoldWithNavBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final lang = ref.watch(languageProvider).selectedLanguage;
-    final isEnglish = lang == AppLanguage.english;
+    final langState = ref.watch(languageProvider);
 
     return Scaffold(
       body: navigationShell,
@@ -136,7 +135,7 @@ class _ScaffoldWithNavBar extends ConsumerWidget {
                   size: 30,
                   color: Palette.purpleContainerDark,
                 ),
-                label: isEnglish ? 'Home' : 'होम',
+                label: langState.strings.navHome,
               ),
               NavigationDestination(
                 icon: const Icon(Icons.camera_alt_outlined, size: 28),
@@ -145,7 +144,7 @@ class _ScaffoldWithNavBar extends ConsumerWidget {
                   size: 30,
                   color: Palette.purpleContainerDark,
                 ),
-                label: isEnglish ? 'Capture' : 'फ़ोटो',
+                label: langState.strings.navCapture,
               ),
               NavigationDestination(
                 icon: const Icon(Icons.grid_view_outlined, size: 28),
@@ -154,7 +153,7 @@ class _ScaffoldWithNavBar extends ConsumerWidget {
                   size: 30,
                   color: Palette.purpleContainerDark,
                 ),
-                label: isEnglish ? 'Catalog' : 'उत्पाद',
+                label: langState.strings.navCatalog,
               ),
               NavigationDestination(
                 icon: const Icon(Icons.mark_chat_unread_outlined, size: 28),
@@ -163,7 +162,7 @@ class _ScaffoldWithNavBar extends ConsumerWidget {
                   size: 30,
                   color: Palette.purpleContainerDark,
                 ),
-                label: isEnglish ? 'Orders' : 'ऑर्डर',
+                label: langState.strings.navOrders,
               ),
             ],
           ),

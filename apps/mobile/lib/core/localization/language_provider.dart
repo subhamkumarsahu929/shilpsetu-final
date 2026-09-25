@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shilpsetu/core/localization/app_strings.dart';
 
 /// Supported language configuration for Shilpsetu.
 enum AppLanguage {
@@ -85,6 +86,28 @@ enum AppLanguage {
   final String greeting;
 
   Locale get locale => Locale(code, 'IN');
+
+  String get brandShilp => switch (this) {
+        AppLanguage.english => 'shilp',
+        AppLanguage.hindi || AppLanguage.marathi => 'शिल्प',
+        AppLanguage.bengali => 'শিল্প',
+        AppLanguage.telugu => 'శిల్ప',
+        AppLanguage.tamil => 'சில்ப',
+        AppLanguage.odia => 'ଶିଳ୍ପ',
+        AppLanguage.gujarati => 'શિલ્પ',
+      };
+
+  String get brandSetu => switch (this) {
+        AppLanguage.english => 'setu',
+        AppLanguage.hindi || AppLanguage.marathi => 'सेतु',
+        AppLanguage.bengali => 'সেতু',
+        AppLanguage.telugu => 'సేతు',
+        AppLanguage.tamil => 'சேது',
+        AppLanguage.odia => 'ସେତୁ',
+        AppLanguage.gujarati => 'સેતુ',
+      };
+
+  AppStrings get strings => AppStrings.of(this);
 }
 
 class LanguageState {
@@ -100,6 +123,8 @@ class LanguageState {
 
   final AppLanguage selectedLanguage;
   final bool hasSelectedLanguage;
+
+  AppStrings get strings => selectedLanguage.strings;
 
   LanguageState copyWith({
     AppLanguage? selectedLanguage,
@@ -122,16 +147,42 @@ class LanguageNotifier extends StateNotifier<LanguageState> {
     );
   }
 
-  /// Helper to get text in the active selected language.
+  bool get isEnglish => state.selectedLanguage == AppLanguage.english;
+
+  /// Returns the localised string for the currently selected language.
+  ///
+  /// Always provide [hi] (Hindi) and [en] (English). All other language
+  /// parameters are optional — when omitted the call falls back to [hi] so
+  /// that existing call-sites continue to work without changes.
   String text({
     required String hi,
     required String en,
+    String? bn,
+    String? te,
+    String? ta,
+    String? or_,  // 'or' is a reserved Dart keyword, so suffix with _
+    String? gu,
+    String? mr,
     String? other,
   }) {
-    if (state.selectedLanguage == AppLanguage.english) {
-      return en;
+    switch (state.selectedLanguage) {
+      case AppLanguage.english:
+        return en;
+      case AppLanguage.hindi:
+        return hi;
+      case AppLanguage.bengali:
+        return bn ?? hi;
+      case AppLanguage.telugu:
+        return te ?? hi;
+      case AppLanguage.tamil:
+        return ta ?? hi;
+      case AppLanguage.odia:
+        return or_ ?? hi;
+      case AppLanguage.gujarati:
+        return gu ?? hi;
+      case AppLanguage.marathi:
+        return mr ?? hi;
     }
-    return hi;
   }
 }
 
